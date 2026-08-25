@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 40" role="img" aria-labelledby="title">
+  <title id="title">beamDrop.</title>
+  <text x="0" y="30" fill="#172033" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" letter-spacing="-3.1">beam</text>
+  <text x="88" y="30" fill="#1877F2" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="800" letter-spacing="-3.1">Drop</text>
+  <circle cx="169" cy="26" r="4" fill="#1877F2"/>
+</svg>
