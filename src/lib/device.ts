@@ -6,6 +6,8 @@ export function inferDeviceType(): DeviceType {
   return 'computer'
 }
 export function defaultDisplayName() {
-  const type = inferDeviceType()
-  return type === 'phone' ? 'My phone' : type === 'tablet' ? 'My tablet' : 'My computer'
+  const adjectives = ['Bright', 'Calm', 'Clever', 'Gentle', 'Quick', 'Quiet', 'Sunny', 'Wild']
+  const nouns = ['Badger', 'Comet', 'Finch', 'Fox', 'Heron', 'Lynx', 'Otter', 'Wren']
+  const pick = <T,>(items: T[]) => items[Math.floor(Math.random() * items.length)]
+  return `${pick(adjectives)} ${pick(nouns)}`
 }

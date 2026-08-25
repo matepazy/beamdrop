@@ -10,11 +10,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.22",
     "framer-motion": "^12.23.12",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-leaflet": "^5.0.0",
     "trystero": "^0.21.0"
   },
   "devDependencies": {
