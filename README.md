@@ -1,8 +1,10 @@
-# Beam
-
 <p align="center">
   <img src="public/beam-monogram.svg" alt="Beam monogram" width="96" height="96" />
 </p>
+
+# BeamDrop.
+
+
 
 Private, temporary, peer-to-peer sharing between browsers.
 
