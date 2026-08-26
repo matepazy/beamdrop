@@ -16,7 +16,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import {
   CircleMarker,
@@ -643,8 +643,17 @@ function BeamSession({
 
   const fileInput = useRef<HTMLInputElement>(null)
   const composerInput = useRef<HTMLTextAreaElement>(null)
+  const conversationRef = useRef<HTMLElement>(null)
 
   const connected = beam.state === 'connected'
+  const activityCount = beam.feed.length + beam.transfers.length
+
+  useLayoutEffect(() => {
+    if (connected && conversationRef.current) {
+      conversationRef.current.scrollTop =
+        conversationRef.current.scrollHeight
+    }
+  }, [activityCount, connected])
 
   const recipient =
     beam.peers[0]?.name ?? 'your other device'
@@ -758,12 +767,25 @@ function BeamSession({
     beam.transfers.length > 0 ||
     beam.feed.length > 0
 
+  const completedReceivedFileIds = new Set(
+    beam.feed
+      .filter((item) => item.kind === 'file' && item.received)
+      .map((item) => item.id),
+  )
+
   const activity = [
-    ...beam.transfers.map((transfer) => ({
+    ...beam.transfers
+      .filter(
+        (transfer) =>
+          transfer.direction !== 'receiving' ||
+          transfer.status !== 'complete' ||
+          !completedReceivedFileIds.has(transfer.id),
+      )
+      .map((transfer) => ({
       type: 'transfer' as const,
       createdAt: transfer.createdAt,
       transfer,
-    })),
+      })),
     ...beam.feed.map((item) => ({
       type: 'message' as const,
       createdAt: item.createdAt,
@@ -840,7 +862,7 @@ function BeamSession({
         </button>
       </div>
 
-      <section className="conversation" aria-label="Conversation">
+      <section ref={conversationRef} className="conversation" aria-label="Conversation">
         {hasActivity ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (

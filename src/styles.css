@@ -1778,25 +1778,41 @@ a:focus-visible {
 .conversation {
   min-height: 0;
   flex: 1;
-  display: flex;
-  margin: 28px 0 18px;
-  overflow: auto;
+  display: block;
+  margin: 18px 0 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border-top: 1px solid rgba(21, 21, 21, 0.12);
   border-bottom: 1px solid rgba(21, 21, 21, 0.12);
 }
 
+.conversation::-webkit-scrollbar {
+  width: 6px;
+}
+
+.conversation::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(21, 21, 21, 0.28);
+}
+
 .conversation-feed {
   width: 100%;
-  align-self: flex-end;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 10px;
-  padding: 22px 2px;
+  padding: 16px 2px;
 }
 
 .conversation-empty {
   width: min(390px, 100%);
-  margin: auto;
+  min-height: 100%;
+  display: grid;
+  align-content: center;
+  margin: 0 auto;
   padding: 32px 0;
   text-align: center;
 }
@@ -1867,7 +1883,7 @@ a:focus-visible {
 
 .chat-composer > textarea {
   width: 100%;
-  min-height: 82px;
+  min-height: 64px;
   display: block;
   padding: 5px 4px 10px;
   resize: vertical;
@@ -1997,12 +2013,16 @@ a:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .session-shell .topbar {
+    height: 56px;
+  }
+
   .room {
     min-height: calc(100svh - 112px);
   }
 
   .conversation {
-    margin: 20px 0 14px;
+    margin: 14px 0 12px;
   }
 
   .conversation .feed-item,
@@ -2277,7 +2297,7 @@ a:focus-visible {
 }
 
 .session-shell .topbar {
-  height: 72px;
+  height: 60px;
 }
 
 .room {
@@ -2287,13 +2307,13 @@ a:focus-visible {
 .room-head {
   align-items: center;
 
-  padding-top: 12px;
+  padding-top: 6px;
 }
 
 .room-head h1 {
-  max-width: 560px;
+  max-width: 600px;
 
-  font-size: clamp(2rem, 4.5vw, 3.4rem);
+  font-size: clamp(2rem, 3.8vw, 2.75rem);
   line-height: 1;
   letter-spacing: -0.04em;
 }
