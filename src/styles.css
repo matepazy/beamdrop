@@ -869,6 +869,273 @@ a:focus-visible {
 
 
 /* =========================================================
+   Technical details
+   ========================================================= */
+
+.technical {
+  padding:
+    clamp(100px, 13vw, 170px)
+    max(28px, calc((100vw - 1120px) / 2));
+
+  background: #f5f4f1;
+  color: #151515;
+  text-align: left;
+}
+
+.technical__intro {
+  max-width: 700px;
+}
+
+.technical__intro h2 {
+  max-width: 650px;
+  margin: 0;
+
+  font-size: clamp(3rem, 6.2vw, 5.7rem);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.91;
+}
+
+.technical__intro p {
+  max-width: 520px;
+  margin: 30px 0 0;
+
+  color: #5b5b56;
+  font-size: 17px;
+  line-height: 1.58;
+}
+
+.transfer-path {
+  display: grid;
+  gap: 0;
+
+  position: relative;
+
+  margin-top: clamp(72px, 10vw, 125px);
+}
+
+.transfer-path::before {
+  position: absolute;
+  top: 28px;
+  bottom: 28px;
+  left: 23px;
+
+  width: 1px;
+
+  background: rgba(21, 21, 21, 0.18);
+
+  content: '';
+}
+
+.transfer-path__step {
+  display: grid;
+  grid-template-columns: 48px minmax(190px, 0.82fr) minmax(0, 1.4fr);
+  align-items: start;
+  gap: clamp(24px, 4vw, 62px);
+
+  position: relative;
+
+  padding: 0 0 clamp(42px, 6vw, 68px);
+}
+
+.transfer-path__index {
+  z-index: 1;
+
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 50%;
+
+  background: #455ef5;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.transfer-path__step h3 {
+  max-width: 260px;
+  margin: 8px 0 0;
+
+  font-size: 23px;
+  letter-spacing: -0.04em;
+  line-height: 1.03;
+}
+
+.transfer-path__step p {
+  max-width: 410px;
+  margin: 8px 0 0;
+
+  color: #5b5b56;
+  font-size: 15px;
+  line-height: 1.58;
+}
+
+.technical__note {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(0, 2fr);
+  gap: 28px;
+
+  max-width: 740px;
+  margin-top: 34px;
+  padding-top: 22px;
+
+  border-top: 1px solid rgba(21, 21, 21, 0.16);
+}
+
+.technical__note span {
+  color: #151515;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.technical__note p {
+  margin: 0;
+
+  color: #5b5b56;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+
+/* =========================================================
+   Footer
+   ========================================================= */
+
+.site-footer {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 28px;
+
+  min-height: 126px;
+  padding: 30px max(28px, calc((100vw - 1120px) / 2));
+
+  background: #151515;
+  color: #f7f6f2;
+  text-align: left;
+}
+
+.site-footer__brand {
+  display: inline-flex;
+  width: 110px;
+}
+
+.site-footer__brand .beam-logo {
+  width: 110px;
+  height: auto;
+}
+
+.site-footer__brand .beam-logo__beam,
+.site-footer__brand .beam-logo__drop {
+  fill: #f7f6f2;
+}
+
+.site-footer__brand .beam-logo__dot {
+  fill: #455ef5;
+}
+
+.site-footer > p {
+  max-width: 270px;
+  margin: 0;
+
+  color: #a8a8a3;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.site-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px 20px;
+}
+
+.site-footer__links a {
+  color: #f7f6f2;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.site-footer__links a:hover,
+.site-footer__links a:focus-visible {
+  color: #aeb9ff;
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .technical {
+    padding: 90px 22px;
+  }
+
+  .technical__intro h2 {
+    font-size: clamp(3rem, 14vw, 4.5rem);
+  }
+
+  .technical__intro p {
+    margin-top: 24px;
+    font-size: 15px;
+  }
+
+  .transfer-path {
+    margin-top: 66px;
+  }
+
+  .transfer-path::before {
+    left: 19px;
+  }
+
+  .transfer-path__step {
+    grid-template-columns: 40px 1fr;
+    gap: 17px;
+
+    padding-bottom: 46px;
+  }
+
+  .transfer-path__step h3 {
+    margin-top: 7px;
+  }
+
+  .transfer-path__index {
+    width: 40px;
+    height: 40px;
+
+    font-size: 11px;
+  }
+
+  .transfer-path__step p {
+    grid-column: 2;
+
+    margin-top: -9px;
+    font-size: 14px;
+  }
+
+  .technical__note {
+    grid-template-columns: 1fr;
+    gap: 9px;
+
+    margin-top: 48px;
+  }
+
+  .site-footer {
+    grid-template-columns: 1fr;
+    gap: 23px;
+
+    padding: 42px 22px;
+  }
+
+  .site-footer__links {
+    justify-content: flex-start;
+  }
+}
+
+
+/* =========================================================
    Waiting screen
    ========================================================= */
 

@@ -465,6 +465,72 @@ function Home({
           <Plus size={18} />
         </button>
       </section>
+
+      <section className="technical" id="technical">
+        <div className="technical__intro">
+          <h2>Private by the shape of the system.</h2>
+
+          <p>
+            Beam uses the web platform’s peer-to-peer transport. There is no
+            Beam account, file store, room directory, or session history to
+            keep.
+          </p>
+        </div>
+
+        <div className="transfer-path" aria-label="How a Beam connection works">
+          <div className="transfer-path__step">
+            <span className="transfer-path__index">01</span>
+            <h3>One shared secret</h3>
+            <p>
+              Your code is normalized and hashed in the browser to create a
+              private room identifier.
+            </p>
+          </div>
+
+          <div className="transfer-path__step">
+            <span className="transfer-path__index">02</span>
+            <h3>A brief rendezvous</h3>
+            <p>
+              A public signaling tracker helps browsers with the same room
+              identifier discover one another.
+            </p>
+          </div>
+
+          <div className="transfer-path__step">
+            <span className="transfer-path__index">03</span>
+            <h3>A direct data channel</h3>
+            <p>
+              WebRTC carries your files, text, and links between browsers. The
+              shared content is never uploaded to Beam.
+            </p>
+          </div>
+        </div>
+
+        <div className="technical__note">
+          <span>Connection note</span>
+          <p>
+            WebRTC transport is browser-encrypted. On restrictive networks, an
+            optional TURN provider may relay encrypted traffic so the peers can
+            still connect.
+          </p>
+        </div>
+      </section>
+
+      <footer className="site-footer">
+        <a className="site-footer__brand" href="/" aria-label="Beam home">
+          <Logo />
+        </a>
+
+        <p>Private, temporary sharing between browsers.</p>
+
+        <nav className="site-footer__links" aria-label="Footer navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#technical">Technical details</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/guidelines">Guidelines</a>
+          <a href="https://github.com/matepazy/beamdrop" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </footer>
     </motion.section>
   )
 }
