@@ -6,8 +6,8 @@ import { getRtcConfig } from '../lib/rtc'
 import { roomIdFor } from '../lib/codes'
 
 export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'failed'
-export type FeedItem = { id: string; kind: 'text' | 'link' | 'file'; value: string; sender: string; size?: number; url?: string; received?: boolean; objectUrl?: string }
-export type TransferRecord = { id: string; name: string; size: number; mimeType: string; sender: string; direction: 'sending' | 'receiving'; status: 'offered' | 'active' | 'complete' | 'declined' | 'cancelled' | 'interrupted'; progress: number; speed: number; file?: File }
+export type FeedItem = { id: string; kind: 'text' | 'link' | 'file'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
+export type TransferRecord = { id: string; name: string; size: number; mimeType: string; sender: string; createdAt: number; direction: 'sending' | 'receiving'; status: 'offered' | 'active' | 'complete' | 'declined' | 'cancelled' | 'interrupted'; progress: number; speed: number; file?: File }
 export type Peer = { id: string; name: string; deviceType: DeviceType }
 
 type Receiver<T> = (callback: (data: T, peerId: string) => void) => void
@@ -52,11 +52,11 @@ export function useBeam(secret: string | null, displayName: string) {
           }
           if (message.type === 'item') {
             const peer = peers.find(candidate => candidate.id === peerId)
-            setFeed(current => [{ id: message.item.id, kind: message.item.kind, value: message.item.value, url: message.item.kind === 'link' ? message.item.value : undefined, sender: peer?.name ?? 'Connected device', received: true }, ...current])
+            setFeed(current => [{ id: message.item.id, kind: message.item.kind, value: message.item.value, url: message.item.kind === 'link' ? message.item.value : undefined, sender: peer?.name ?? 'Connected device', createdAt: message.item.createdAt, received: true }, ...current])
           }
           if (message.type === 'file-offer') {
             incomingRef.current.set(message.transferId, { offer: message, chunks: [], bytes: 0, startedAt: Date.now(), peerId })
-            setTransfers(current => [{ id: message.transferId, name: message.name, size: message.size, mimeType: message.mimeType, sender: peers.find(peer => peer.id === peerId)?.name ?? 'Connected device', direction: 'receiving', status: 'offered', progress: 0, speed: 0 }, ...current])
+            setTransfers(current => [{ id: message.transferId, name: message.name, size: message.size, mimeType: message.mimeType, sender: peers.find(peer => peer.id === peerId)?.name ?? 'Connected device', createdAt: Date.now(), direction: 'receiving', status: 'offered', progress: 0, speed: 0 }, ...current])
           }
           if (message.type === 'file-accept') {
             const file = outgoingRef.current.get(message.transferId)
@@ -76,7 +76,7 @@ export function useBeam(secret: string | null, displayName: string) {
             const blob = new Blob(incoming.chunks, { type: incoming.offer.mimeType })
             const objectUrl = URL.createObjectURL(blob)
             setTransfers(current => current.map(item => item.id === id ? { ...item, status: 'complete', progress: 1 } : item))
-            setFeed(current => [{ id, kind: 'file', value: incoming.offer.name, size: incoming.offer.size, sender: peers.find(peer => peer.id === peerId)?.name ?? 'Connected device', received: true, objectUrl }, ...current])
+            setFeed(current => [{ id, kind: 'file', value: incoming.offer.name, size: incoming.offer.size, sender: peers.find(peer => peer.id === peerId)?.name ?? 'Connected device', createdAt: Date.now(), received: true, objectUrl }, ...current])
             incomingRef.current.delete(id); void sendControl({ type: 'file-complete', transferId: id }, peerId)
           }
         })
@@ -93,13 +93,13 @@ export function useBeam(secret: string | null, displayName: string) {
     const [send] = room.makeAction<BeamMessage>('beam-control')
     const item = { id: uid(), kind, value: value.trim(), createdAt: Date.now() } as const
     void send({ type: 'item', item })
-    setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You' }, ...current])
+    setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current])
   }, [])
   const offerFile = useCallback((file: File) => {
     const room = roomRef.current; if (!room) return
     const [send] = room.makeAction<BeamMessage>('beam-control'); const id = uid(); outgoingRef.current.set(id, file)
     const offer: FileOffer = { type: 'file-offer', transferId: id, name: file.name, size: file.size, mimeType: file.type || 'application/octet-stream', totalChunks: totalChunksFor(file.size) }
-    void send(offer); setTransfers(current => [{ id, name: file.name, size: file.size, mimeType: offer.mimeType, sender: 'You', direction: 'sending', status: 'offered', progress: 0, speed: 0, file }, ...current])
+    void send(offer); setTransfers(current => [{ id, name: file.name, size: file.size, mimeType: offer.mimeType, sender: 'You', createdAt: Date.now(), direction: 'sending', status: 'offered', progress: 0, speed: 0, file }, ...current])
   }, [])
   const replyToOffer = useCallback((id: string, accept: boolean) => { const room = roomRef.current; if (!room) return; const [send] = room.makeAction<BeamMessage>('beam-control'); const incoming = incomingRef.current.get(id); if (!incoming) return; void send({ type: accept ? 'file-accept' : 'file-decline', transferId: id }, incoming.peerId); setTransfers(current => current.map(item => item.id === id ? { ...item, status: accept ? 'active' : 'declined' } : item)) }, [])
   const cancelTransfer = useCallback((id: string) => { const room = roomRef.current; if (!room) return; const [send] = room.makeAction<BeamMessage>('beam-control'); cancelledRef.current.add(id); void send({ type: 'file-cancel', transferId: id }); outgoingRef.current.delete(id); incomingRef.current.delete(id); setTransfers(current => current.map(item => item.id === id ? { ...item, status: 'cancelled' } : item)) }, [])

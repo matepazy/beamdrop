@@ -634,7 +634,6 @@ function BeamSession({
     'text' | 'link' | 'location'
   >('text')
 
-  const [showComposer, setShowComposer] = useState(false)
   const [shareStatus, setShareStatus] = useState('')
 
   const [pickedLocation, setPickedLocation] = useState<{
@@ -643,6 +642,7 @@ function BeamSession({
   } | null>(null)
 
   const fileInput = useRef<HTMLInputElement>(null)
+  const composerInput = useRef<HTMLTextAreaElement>(null)
 
   const connected = beam.state === 'connected'
 
@@ -661,18 +661,19 @@ function BeamSession({
     mode: 'text' | 'link' | 'location',
   ) => {
     setComposerMode(mode)
-    setShowComposer(true)
     setShareStatus('')
 
     if (mode === 'location') {
       setPickedLocation(null)
+    } else {
+      requestAnimationFrame(() => composerInput.current?.focus())
     }
   }
 
-  const closeComposer = () => {
+  const clearComposer = () => {
     setComposer('')
     setPickedLocation(null)
-    setShowComposer(false)
+    setComposerMode('text')
     setShareStatus('')
   }
 
@@ -757,6 +758,19 @@ function BeamSession({
     beam.transfers.length > 0 ||
     beam.feed.length > 0
 
+  const activity = [
+    ...beam.transfers.map((transfer) => ({
+      type: 'transfer' as const,
+      createdAt: transfer.createdAt,
+      transfer,
+    })),
+    ...beam.feed.map((item) => ({
+      type: 'message' as const,
+      createdAt: item.createdAt,
+      item,
+    })),
+  ].sort((a, b) => a.createdAt - b.createdAt)
+
   const locationUrl =
     pickedLocation &&
     `https://www.openstreetmap.org/?mlat=${pickedLocation.lat}&mlon=${pickedLocation.lng}#map=16/${pickedLocation.lat}/${pickedLocation.lng}`
@@ -765,6 +779,16 @@ function BeamSession({
     composerMode === 'location'
       ? locationUrl ?? ''
       : composer
+
+  const sendMessage = () => {
+    if (!shareValue.trim()) return
+
+    beam.sendItem(
+      shareValue,
+      isUrl(shareValue) ? 'link' : 'text',
+    )
+    clearComposer()
+  }
 
   return (
     <motion.section
@@ -816,150 +840,20 @@ function BeamSession({
         </button>
       </div>
 
-      <AnimatePresence
-        initial={false}
-        mode="wait"
-      >
-        {showComposer ? (
-          <motion.form
-            key="composer"
-            className="composer"
-            initial={{
-              opacity: 0,
-              y: 8,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            exit={{
-              opacity: 0,
-              y: -8,
-            }}
-            transition={{
-              duration: 0.2,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            onSubmit={(event) => {
-              event.preventDefault()
-
-              beam.sendItem(
-                shareValue,
-                isUrl(shareValue)
-                  ? 'link'
-                  : 'text',
-              )
-
-              closeComposer()
-            }}
-          >
-            <div className="composer-head">
-              <p>
-                {composerMode === 'location'
-                  ? 'Pick a location'
-                  : composerMode === 'link'
-                    ? 'Share a link'
-                    : 'Share text'}
-              </p>
-
-              <button
-                className="close-composer"
-                type="button"
-                onClick={closeComposer}
-                aria-label="Close share draft"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {composerMode === 'location' ? (
-              <>
-                <MapPinPicker
-                  pin={pickedLocation}
-                  onPick={(pin) => {
-                    setPickedLocation(pin)
-
-                    setShareStatus(
-                      'Pin added. Review it, then send.',
-                    )
-                  }}
-                />
-
-                <p className="pin-coordinates">
-                  {pickedLocation
-                    ? `${pickedLocation.lat.toFixed(6)}, ${pickedLocation.lng.toFixed(6)}`
-                    : 'Click the map to place a pin.'}
-                </p>
-              </>
-            ) : (
-              <textarea
-                autoFocus
-                value={composer}
-                onChange={(event) =>
-                  setComposer(event.target.value)
-                }
-                placeholder={
-                  composerMode === 'link'
-                    ? 'Paste a link'
-                    : 'Write a note'
-                }
-              />
-            )}
-
-            <div className="composer-actions">
-              {composerMode === 'location' && (
-                <button
-                  className="quiet-button"
-                  type="button"
-                  onClick={useCurrentLocation}
-                >
-                  <MapPin size={15} />
-                  Use my location
-                </button>
-              )}
-
-              <button
-                className="primary"
-                disabled={!shareValue.trim()}
-                type="submit"
-              >
-                Send
-                <Send size={16} />
-              </button>
-            </div>
-          </motion.form>
+      <section className="conversation" aria-label="Conversation">
+        {hasActivity ? (
+          <div className="conversation-feed">
+            {activity.map((entry) => entry.type === 'transfer' ? (
+              <TransferCard key={entry.transfer.id} item={entry.transfer} recipient={recipient} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
+            ) : <FeedCard key={entry.item.id} item={entry.item} />)}
+          </div>
         ) : (
-          <motion.div
-            key="dropzone"
-            className="dropzone-workspace"
-            initial={{
-              opacity: 0,
-              y: 8,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            exit={{
-              opacity: 0,
-              y: -8,
-            }}
-            transition={{
-              duration: 0.2,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-          >
-            <DropZone
-              onFiles={(files) =>
-                files.forEach(beam.offerFile)
-              }
-              onPick={() =>
-                fileInput.current?.click()
-              }
-            />
-          </motion.div>
+          <div className="conversation-empty">
+            <span>Private conversation</span>
+            <p>Messages and attachments shared here disappear when this Beam ends.</p>
+          </div>
         )}
-      </AnimatePresence>
+      </section>
 
       <input
         ref={fileInput}
@@ -973,52 +867,51 @@ function BeamSession({
         }
       />
 
-      <div
-        className="share-row"
-        aria-label="Share something else"
-      >
-        <button
-          className="share-action"
-          type="button"
-          onClick={() =>
-            openComposer('link')
-          }
-        >
-          <Link2 size={15} />
-          Link
-        </button>
+      <form className="chat-composer" onSubmit={(event) => {
+        event.preventDefault()
+        sendMessage()
+      }}>
+        {composerMode === 'location' ? (
+          <div className="location-draft">
+            <div className="location-draft__head">
+              <strong>Location attachment</strong>
+              <button type="button" onClick={clearComposer} aria-label="Remove location attachment"><X size={16} /></button>
+            </div>
+            <MapPinPicker pin={pickedLocation} onPick={(pin) => {
+              setPickedLocation(pin)
+              setShareStatus('Pin added. Ready to send.')
+            }} />
+            <div className="location-draft__actions">
+              <span>{pickedLocation ? `${pickedLocation.lat.toFixed(5)}, ${pickedLocation.lng.toFixed(5)}` : 'Choose a point on the map'}</span>
+              <button className="quiet-button" type="button" onClick={useCurrentLocation}><MapPin size={15} /> Use my location</button>
+            </div>
+          </div>
+        ) : (
+          <textarea
+            ref={composerInput}
+            value={composer}
+            onChange={(event) => setComposer(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                sendMessage()
+              }
+            }}
+            placeholder={composerMode === 'link' ? 'Paste a link to send' : `Message ${recipient}`}
+            aria-label="Message"
+          />
+        )}
 
-        <button
-          className="share-action"
-          type="button"
-          onClick={() =>
-            openComposer('text')
-          }
-        >
-          <FileText size={15} />
-          Text
-        </button>
-
-        <button
-          className="share-action"
-          type="button"
-          onClick={addLocation}
-        >
-          <MapPin size={15} />
-          Location
-        </button>
-
-        <button
-          className="share-action"
-          type="button"
-          onClick={() =>
-            void addClipboard()
-          }
-        >
-          <Clipboard size={15} />
-          Clipboard
-        </button>
-      </div>
+        <div className="chat-composer__bottom">
+          <div className="attachment-actions" aria-label="Attach or share">
+            <button className="attachment-action" type="button" onClick={() => fileInput.current?.click()}><FileText size={17} /><span>File</span></button>
+            <button className="attachment-action" type="button" onClick={() => openComposer('link')}><Link2 size={17} /><span>Link</span></button>
+            <button className="attachment-action" type="button" onClick={addLocation}><MapPin size={17} /><span>Location</span></button>
+            <button className="attachment-action" type="button" onClick={() => void addClipboard()}><Clipboard size={17} /><span>Paste</span></button>
+          </div>
+          <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /><span>Send</span></button>
+        </div>
+      </form>
 
       {shareStatus && (
         <p
@@ -1029,59 +922,6 @@ function BeamSession({
         </p>
       )}
 
-      {hasActivity && (
-        <div className="room-grid">
-          <section>
-            <h2>Transfers</h2>
-
-            <div className="transfer-list">
-              <AnimatePresence>
-                {beam.transfers.map(
-                  (transfer) => (
-                    <TransferCard
-                      key={transfer.id}
-                      item={transfer}
-                      recipient={recipient}
-                      onAccept={() =>
-                        beam.replyToOffer(
-                          transfer.id,
-                          true,
-                        )
-                      }
-                      onDecline={() =>
-                        beam.replyToOffer(
-                          transfer.id,
-                          false,
-                        )
-                      }
-                      onCancel={() =>
-                        beam.cancelTransfer(
-                          transfer.id,
-                        )
-                      }
-                    />
-                  ),
-                )}
-              </AnimatePresence>
-            </div>
-          </section>
-
-          {beam.feed.length > 0 && (
-            <section>
-              <h2>Received</h2>
-
-              <div className="feed">
-                {beam.feed.map((item) => (
-                  <FeedCard
-                    key={item.id}
-                    item={item}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
     </motion.section>
   )
 }
@@ -1358,54 +1198,6 @@ function Waiting({
   )
 }
 
-function DropZone({
-  onFiles,
-  onPick,
-}: {
-  onFiles(files: File[]): void
-  onPick(): void
-}) {
-  const [over, setOver] = useState(false)
-
-  return (
-    <div
-      className={`dropzone ${
-        over ? 'over' : ''
-      }`}
-      onDragOver={(event) => {
-        event.preventDefault()
-        setOver(true)
-      }}
-      onDragLeave={() =>
-        setOver(false)
-      }
-      onDrop={(event) => {
-        event.preventDefault()
-        setOver(false)
-
-        onFiles(
-          Array.from(
-            event.dataTransfer.files,
-          ),
-        )
-      }}
-    >
-      <h2>
-        {over
-          ? 'Drop to send'
-          : 'Drop a file'}
-      </h2>
-
-      <p>
-        or{' '}
-        <button onClick={onPick}>
-          choose one from this device
-        </button>
-      </p>
-    </div>
-  )
-}
-
 function TransferCard({
   item,
   recipient,
@@ -1425,7 +1217,7 @@ function TransferCard({
 
   return (
     <motion.article
-      className="transfer-card"
+      className={`transfer-card ${item.direction === 'receiving' ? 'received-message' : 'sent-message'}`}
       initial={{
         opacity: 0,
         y: 8,
@@ -1450,7 +1242,7 @@ function TransferCard({
             {item.direction ===
             'sending'
               ? `To ${recipient}`
-              : `From ${item.sender}`}
+              : `From ${item.sender}`} · {formatMessageTime(item.createdAt)}
           </span>
         </div>
 
@@ -1520,7 +1312,7 @@ function FeedCard({
   item: FeedItem
 }) {
   return (
-    <article className="feed-item">
+    <article className={`feed-item ${item.received ? 'received-message' : 'sent-message'}`}>
       <div className="feed-icon">
         {item.kind === 'file' ? (
           <FileText size={17} />
@@ -1539,7 +1331,7 @@ function FeedCard({
         </strong>
 
         <span>
-          From {item.sender}
+          {item.received ? `From ${item.sender}` : 'You'} · {formatMessageTime(item.createdAt)}
           {item.size
             ? ` · ${formatBytes(item.size)}`
             : ''}
@@ -1575,6 +1367,13 @@ function FeedCard({
       )}
     </article>
   )
+}
+
+function formatMessageTime(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(timestamp)
 }
 
 function QrDialog({

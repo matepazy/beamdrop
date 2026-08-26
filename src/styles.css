@@ -1765,6 +1765,287 @@ a:focus-visible {
 
 
 /* =========================================================
+   Conversation-first connected share
+   ========================================================= */
+
+.room {
+  max-width: 760px;
+  min-height: calc(100svh - 136px);
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  margin: 28px 0 18px;
+  overflow: auto;
+  border-top: 1px solid rgba(21, 21, 21, 0.12);
+  border-bottom: 1px solid rgba(21, 21, 21, 0.12);
+}
+
+.conversation-feed {
+  width: 100%;
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 2px;
+}
+
+.conversation-empty {
+  width: min(390px, 100%);
+  margin: auto;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.conversation-empty span {
+  display: inline-block;
+  color: #455ef5;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.conversation-empty p {
+  margin: 10px 0 0;
+  color: #686863;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.conversation .feed-item,
+.conversation .transfer-card {
+  width: min(84%, 540px);
+  margin: 0;
+  padding: 13px 15px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 9px 22px rgba(21, 21, 21, 0.06);
+}
+
+.conversation .sent-message {
+  align-self: flex-end;
+  background: #455ef5;
+  color: #fff;
+}
+
+.conversation .sent-message strong,
+.conversation .sent-message span,
+.conversation .sent-message button {
+  color: inherit;
+}
+
+.conversation .sent-message .feed-icon,
+.conversation .sent-message .file-mark {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.conversation .received-message {
+  align-self: flex-start;
+  background: #fff;
+  color: #151515;
+}
+
+.conversation .feed-item a,
+.conversation .feed-item button {
+  font-weight: 800;
+}
+
+.chat-composer {
+  flex: none;
+  padding: 13px;
+  border: 1px solid rgba(21, 21, 21, 0.18);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(21, 21, 21, 0.08);
+}
+
+.chat-composer > textarea {
+  width: 100%;
+  min-height: 82px;
+  display: block;
+  padding: 5px 4px 10px;
+  resize: vertical;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #151515;
+  line-height: 1.45;
+}
+
+.chat-composer > textarea::placeholder {
+  color: #777771;
+}
+
+.chat-composer__bottom,
+.attachment-actions,
+.location-draft__head,
+.location-draft__actions {
+  display: flex;
+  align-items: center;
+}
+
+.chat-composer__bottom {
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(21, 21, 21, 0.1);
+}
+
+.attachment-actions {
+  gap: 4px;
+}
+
+.attachment-action {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #555552;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.attachment-action:hover,
+.attachment-action:focus-visible {
+  background: #eef0ff;
+  color: #334bd9;
+}
+
+.send-message {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 10px;
+  background: #455ef5;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.send-message:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.send-message:not(:disabled):hover {
+  background: #3048dc;
+}
+
+.location-draft {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f5f4f1;
+}
+
+.location-draft__head {
+  justify-content: space-between;
+  padding: 10px 12px;
+  color: #444440;
+  font-size: 13px;
+}
+
+.location-draft__head button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #555552;
+}
+
+.location-draft__head button:hover {
+  background: #e6e5e1;
+}
+
+.location-draft .map-picker {
+  height: 190px;
+  min-height: 0;
+  border-radius: 0;
+}
+
+.location-draft__actions {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: #686863;
+  font-size: 12px;
+}
+
+.location-draft__actions .quiet-button {
+  flex: none;
+}
+
+.share-status {
+  margin: 8px 0 0;
+  text-align: left;
+}
+
+@media (max-width: 620px) {
+  .room {
+    min-height: calc(100svh - 112px);
+  }
+
+  .conversation {
+    margin: 20px 0 14px;
+  }
+
+  .conversation .feed-item,
+  .conversation .transfer-card {
+    width: 92%;
+  }
+
+  .chat-composer {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .chat-composer > textarea {
+    min-height: 68px;
+  }
+
+  .attachment-actions {
+    flex: 1;
+    justify-content: space-between;
+    gap: 0;
+  }
+
+  .attachment-action {
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .send-message span {
+    display: none;
+  }
+
+  .send-message {
+    width: 42px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+
+/* =========================================================
    Reduced motion
    ========================================================= */
 
