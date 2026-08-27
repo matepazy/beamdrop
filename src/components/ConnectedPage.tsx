@@ -65,8 +65,8 @@ export function ConnectedPage({
   const recipient =
     beam.peers[0]?.name ?? 'your other device'
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(secret)
+  const copy = async (value: string) => {
+    await navigator.clipboard.writeText(value)
 
     setCopied(true)
 

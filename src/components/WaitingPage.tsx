@@ -25,7 +25,7 @@ export function WaitingPage({
   isCreator: boolean
   passwordRequired: boolean
   onPasswordChange(password: string): void
-  onCopy(): void
+  onCopy(value: string): void
   copied: boolean
   onQr(): void
   onEnd(): void
@@ -34,6 +34,12 @@ export function WaitingPage({
 }) {
   const [passwordDraft, setPasswordDraft] = useState('')
   const [editingLock, setEditingLock] = useState(false)
+
+  const joinUrl = useMemo(
+    () =>
+      `${location.origin}${location.pathname}#/join/${encodeURIComponent(secret)}`,
+    [secret],
+  )
 
   useEffect(() => {
     setPasswordDraft(password)
@@ -95,13 +101,13 @@ export function WaitingPage({
           pointerEvents: 'auto',
         }}
       >
-        <p className="waiting-lead">
+        <h2 className="waiting-title">
           {passwordRequired
-            ? 'Password required'
+            ? 'Enter password'
             : isCreator
-              ? 'Your private Beam is ready.'
-              : 'Joining private Beam'}
-        </p>
+              ? 'Share this code'
+              : 'Joining Beam'}
+        </h2>
 
         <h1>{secret}</h1>
 
@@ -133,15 +139,15 @@ export function WaitingPage({
         ) : (
           <p className="share-instruction">
             {isCreator
-              ? 'Send this code to the other device. It joins the same temporary space.'
-              : 'Looking for an active Beam with this code.'}
+              ? 'Send it to the device you want to connect.'
+              : 'Looking for a Beam with this code.'}
           </p>
         )}
 
         <div className="waiting-actions">
           <button
             className="primary"
-            onClick={onCopy}
+            onClick={() => onCopy(joinUrl)}
           >
             {copied ? (
               <Check size={17} />
@@ -150,11 +156,16 @@ export function WaitingPage({
             )}
 
             {copied
-              ? 'Copied'
-              : 'Copy code'}
+              ? 'Link copied'
+              : 'Copy link'}
           </button>
 
-          <button onClick={onQr}>
+          <button
+            className="qr-button"
+            onClick={onQr}
+            aria-label="Show QR code"
+            title="Show QR code"
+          >
             <QrCode size={17} />
             QR code
           </button>
@@ -209,7 +220,7 @@ export function WaitingPage({
               </div>
             ) : (
               <button className="lock-panel__add" onClick={() => setEditingLock(true)}>
-                <LockKeyhole size={16} /> Add a password lock
+                <LockKeyhole size={16} /> Add password
               </button>
             )}
           </div>
@@ -218,7 +229,7 @@ export function WaitingPage({
         <div
           className={`connection ${state}`}
         >
-          <LoaderCircle size={19} />
+          <LoaderCircle size={17} />
           <strong>{label}</strong>
         </div>
       </div>

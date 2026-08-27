@@ -25,6 +25,27 @@ export function normalizeSecret(value: string) {
   return trimmed
 }
 
+export function secretFromJoinInput(value: string) {
+  const input = value.trim()
+
+  try {
+    const url = new URL(input)
+    const match = url.hash.match(/^#\/join\/(.+)$/)
+
+    if (match) {
+      try {
+        return decodeURIComponent(match[1])
+      } catch {
+        return input
+      }
+    }
+  } catch {
+    // A short Beam code is not a URL, so use the input unchanged.
+  }
+
+  return input
+}
+
 export function isValidSecret(value: string) {
   if (/[\u0000-\u001f]/.test(value)) return false
   const normalized = normalizeSecret(value)

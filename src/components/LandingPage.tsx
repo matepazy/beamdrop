@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { ArrowDown, Plus } from 'lucide-react'
+import { ArrowDown, ArrowRight, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { generatePassphrase, isValidSecret, normalizeSecret } from '../lib/codes'
+import { generatePassphrase, isValidSecret, normalizeSecret, secretFromJoinInput } from '../lib/codes'
 import { InfoMenu, Logo } from './Brand'
 
 export function LandingPage({
@@ -16,6 +16,12 @@ export function LandingPage({
   const [navOnDarkSurface, setNavOnDarkSurface] = useState(false)
   const details = useRef<HTMLElement>(null)
   const create = () => onCreate(generatePassphrase(), '')
+  const joinSecret = secretFromJoinInput(join)
+  const isJoinValid = isValidSecret(joinSecret)
+
+  const submitJoin = () => {
+    if (isJoinValid) onJoin(normalizeSecret(joinSecret))
+  }
 
   useEffect(() => {
     const darkSections = () =>
@@ -87,8 +93,8 @@ export function LandingPage({
           </h1>
 
           <p>
-            Files, notes, and links travel from one browser to another.
-            No account, no upload, no trace left behind.
+            <span>Files, notes, and links travel from one browser to another.</span>
+            <span>No account, no upload, no trace left behind.</span>
           </p>
         </div>
 
@@ -103,36 +109,40 @@ export function LandingPage({
 
           <div className="join-panel">
             <label htmlFor="beam-code">
-              Already have a code?
+              Have a Beam link or code?
             </label>
 
-            <div className="join-form">
+            <form
+              className={`join-form${isJoinValid ? ' join-form--ready' : ''}`}
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitJoin()
+              }}
+            >
               <input
                 id="beam-code"
-                aria-label="Beam code or passphrase"
+                aria-label="Beam link, code, or passphrase"
+                aria-invalid={join.length > 0 && !isJoinValid}
                 value={join}
                 onChange={(event) => setJoin(event.target.value)}
                 onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter' &&
-                    isValidSecret(join)
-                  ) {
-                    onJoin(normalizeSecret(join))
+                  if (event.key === 'Enter' && isJoinValid) {
+                    event.preventDefault()
+                    submitJoin()
                   }
                 }}
-                placeholder="Enter code or phrase"
+                placeholder="Paste link or enter code"
               />
 
               <button
                 className="join-button"
-                disabled={!isValidSecret(join)}
-                onClick={() =>
-                  onJoin(normalizeSecret(join))
-                }
+                type="submit"
+                disabled={!isJoinValid}
               >
                 Join
+                {isJoinValid && <ArrowRight size={16} aria-hidden="true" />}
               </button>
-            </div>
+            </form>
           </div>
         </div>
 
@@ -283,4 +293,3 @@ export function LandingPage({
     </motion.section>
   )
 }
-
