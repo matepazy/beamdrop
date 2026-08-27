@@ -1,7 +1,10 @@
 export type PeerHello = { type: 'hello'; name: string; deviceType: 'phone' | 'tablet' | 'computer' }
 export type SharedText = { type: 'item'; item: { id: string; kind: 'text' | 'link'; value: string; createdAt: number } }
 export type FileOffer = { type: 'file-offer'; transferId: string; name: string; size: number; mimeType: string; totalChunks: number }
-export type FileReply = { type: 'file-accept' | 'file-decline' | 'file-cancel'; transferId: string }
+export type FileReply =
+  | { type: 'file-accept'; transferId: string }
+  | { type: 'file-decline'; transferId: string }
+  | { type: 'file-cancel'; transferId: string }
 export type FileComplete = { type: 'file-complete'; transferId: string }
 export type JoinRequest = { type: 'join-request'; name: string; deviceType: 'phone' | 'tablet' | 'computer'; token: string; passwordProof?: string }
 export type MemberApproved = { type: 'member-approved'; peerId: string; token: string }
