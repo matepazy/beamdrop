@@ -2684,6 +2684,60 @@ a:focus-visible {
   background: transparent;
 }
 
+.settings-button {
+  margin-left: auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(21, 21, 21, .13);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .58);
+  color: #555552;
+}
+
+.settings-button:hover,
+.settings-button:focus-visible {
+  background: #fff;
+  color: #455ef5;
+}
+
+.settings-dialog {
+  width: min(480px, calc(100vw - 40px));
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .2);
+}
+
+.settings-dialog__head,
+.settings-dialog__head > div,
+.settings-dialog__password,
+.settings-dialog__toggle {
+  display: flex;
+  align-items: center;
+}
+
+.settings-dialog__head { justify-content: space-between; gap: 16px; }
+.settings-dialog__head > div { gap: 9px; }
+.settings-dialog__head h2 { margin: 0; font-size: 20px; letter-spacing: -.035em; }
+.settings-dialog__head > button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #555552; }
+.settings-dialog__head > button:hover { background: #f5f4f1; }
+.settings-dialog__section { margin-top: 22px; padding-top: 20px; border-top: 1px solid rgba(21, 21, 21, .1); }
+.settings-dialog__section strong { font-size: 14px; }
+.settings-dialog__section p, .settings-dialog__note { margin: 5px 0 0; color: #686863; font-size: 13px; line-height: 1.5; }
+.settings-dialog__section label { display: block; margin-top: 15px; color: #555552; font-size: 12px; font-weight: 700; }
+.settings-dialog__section label span { color: #777773; font-weight: 500; }
+.settings-dialog__password { gap: 8px; margin-top: 7px; }
+.settings-dialog__password input { min-width: 0; flex: 1; padding: 10px 11px; border: 1px solid rgba(21, 21, 21, .18); border-radius: 9px; }
+.settings-dialog__password .primary { min-height: 40px; }
+.settings-dialog__toggle { justify-content: space-between; gap: 22px; }
+.toggle { width: 44px; height: 26px; flex: none; padding: 3px; border: 0; border-radius: 999px; background: #c9c9c3; transition: background .16s ease; }
+.toggle span { width: 20px; height: 20px; display: block; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .16s ease; }
+.toggle.on { background: #455ef5; }
+.toggle.on span { transform: translateX(18px); }
+.settings-dialog__note { margin-top: 22px; }
+
 .participants {
   margin: 22px 0 4px;
   padding: 13px 15px;

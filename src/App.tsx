@@ -14,6 +14,7 @@ import {
   Plus,
   QrCode,
   Send,
+  Settings,
   UserRound,
   UserRoundX,
   WifiOff,
@@ -719,6 +720,8 @@ function BeamSession({
   const beam = useBeam(secret, password, displayName, isCreator)
 
   const [qrOpen, setQrOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [passwordDraft, setPasswordDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const [composer, setComposer] = useState('')
 
@@ -944,6 +947,19 @@ function BeamSession({
         </div>
 
         <button
+          className="settings-button"
+          type="button"
+          onClick={() => {
+            setPasswordDraft('')
+            setSettingsOpen(true)
+          }}
+          aria-label="Beam settings"
+          title="Beam settings"
+        >
+          <Settings size={18} />
+        </button>
+
+        <button
           className="end-button"
           onClick={onEnd}
         >
@@ -1042,6 +1058,56 @@ function BeamSession({
           {shareStatus}
         </p>
       )}
+
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            className="dialog-backdrop"
+            role="presentation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={() => setSettingsOpen(false)}
+          >
+            <motion.section
+              className="settings-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="beam-settings-title"
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="settings-dialog__head">
+                <div><Settings size={19} /><h2 id="beam-settings-title">Beam settings</h2></div>
+                <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={18} /></button>
+              </div>
+
+              {isCreator ? (
+                <>
+                  <form className="settings-dialog__section" onSubmit={(event) => {
+                    event.preventDefault()
+                    onPasswordChange(passwordDraft)
+                    setSettingsOpen(false)
+                  }}>
+                    <div><strong>Password</strong><p>Changes apply to new joiners only. People already connected stay in this Beam.</p></div>
+                    <label htmlFor="settings-password">New password <span>(leave blank to remove)</span></label>
+                    <div className="settings-dialog__password"><input id="settings-password" type="password" autoComplete="new-password" value={passwordDraft} onChange={(event) => setPasswordDraft(event.target.value)} placeholder="No password" /><button className="primary" type="submit">Save</button></div>
+                  </form>
+
+                  <div className="settings-dialog__section settings-dialog__toggle">
+                    <div><strong>Free for ALL</strong><p>Anyone with the Beam code can join instantly. No approval is needed after the first member joins.</p></div>
+                    <button className={`toggle ${beam.freeForAll ? 'on' : ''}`} type="button" role="switch" aria-checked={beam.freeForAll} onClick={() => beam.setFreeForAll(!beam.freeForAll)}><span /></button>
+                  </div>
+                </>
+              ) : (
+                <p className="settings-dialog__note">Only the person who started this Beam can change its password or joining mode.</p>
+              )}
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </motion.section>
   )

@@ -4,7 +4,7 @@ import { CHUNK_SIZE, parseMessage, totalChunksFor, type BeamMessage, type FileOf
 import { inferDeviceType, type DeviceType } from '../lib/device'
 import { getRtcConfig } from '../lib/rtc'
 import { roomIdFor } from '../lib/codes'
-import { decryptBytes, decryptMessage, encryptionKeyFor, encryptBytes, encryptMessage } from '../lib/crypto'
+import { decryptBytes, decryptMessage, encryptionKeyFor, encryptBytes, encryptMessage, passwordProofFor } from '../lib/crypto'
 
 export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'failed'
 export type FeedItem = { id: string; kind: 'text' | 'link' | 'file'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
@@ -26,19 +26,26 @@ export function useBeam(secret: string | null, password: string, displayName: st
   const approvedRef = useRef(new Set<string>()); const knownRef = useRef(new Map<string, Peer>()); const tokensRef = useRef(new Map<string, string>())
   const ownTokenRef = useRef(uid()); const joinedRef = useRef(isCreator)
   const passwordRef = useRef(password)
+  const passwordProofRef = useRef('')
+  const freeForAllRef = useRef(false)
+  const [freeForAll, setFreeForAllState] = useState(false)
   const send = useCallback(async (message: BeamMessage, peerId?: string) => { const room = roomRef.current; const key = keyRef.current; if (!room || !key) return; const [sendControl] = room.makeAction<Uint8Array>('beam-control'); await sendControl(await encryptMessage(key, message), peerId) }, [])
 
   useEffect(() => {
     passwordRef.current = password
     if (!secret) return
     let cancelled = false
-    void encryptionKeyFor(secret, password).then(key => {
+    void Promise.all([encryptionKeyFor(secret), passwordProofFor(secret, password)]).then(([key, proof]) => {
       if (cancelled) return
       keyRef.current = key
-      // The lobby connection remains open while the password prompt is shown.
-      // Retrying here uses the newly derived key without ever sending it.
+      if (isCreator) {
+        passwordProofRef.current = proof
+        if (joinedRef.current) void send({ type: 'room-settings', passwordProof: proof, freeForAll: freeForAllRef.current })
+      }
+      // The room key is based on the Beam code alone. A password controls admission,
+      // so replacing it never interrupts people already in the Beam.
       if (!isCreator && password && roomRef.current && !joinedRef.current) {
-        void send({ type: 'join-request', name: displayName, deviceType: inferDeviceType(), token: ownTokenRef.current })
+        void send({ type: 'join-request', name: displayName, deviceType: inferDeviceType(), token: ownTokenRef.current, passwordProof: proof })
       }
     })
     return () => { cancelled = true }
@@ -50,16 +57,17 @@ export function useBeam(secret: string | null, password: string, displayName: st
     const start = async () => {
       try {
         setPasswordRequired(false); setState('waiting')
-        const [rtcConfig, roomId, key] = await Promise.all([getRtcConfig(), roomIdFor(secret), encryptionKeyFor(secret, passwordRef.current)])
+        const [rtcConfig, roomId, key, initialProof] = await Promise.all([getRtcConfig(), roomIdFor(secret), encryptionKeyFor(secret), passwordProofFor(secret, passwordRef.current)])
         if (stopped) return
         keyRef.current = key; joinedRef.current = isCreator
+        if (isCreator) passwordProofRef.current = initialProof
         room = joinRoom({ appId: 'beamdrop-v1', rtcConfig }, roomId) as unknown as RoomLike; roomRef.current = room
         const [, onControl] = room.makeAction<Uint8Array>('beam-control'); const [sendChunk, onChunk] = room.makeAction<Uint8Array>('beam-chunk')
-        const [sendAccess, onAccess] = room.makeAction<{ type: 'probe' } | { type: 'status'; locked: boolean }>('beam-access')
+        const [sendAccess, onAccess] = room.makeAction<{ type: 'probe' } | { type: 'status'; locked: boolean; passwordProof?: string }>('beam-access')
         const transmit = (message: BeamMessage, peerId?: string) => send(message, peerId)
         const hello = (peerId?: string) => void transmit({ type: 'hello', name: displayName, deviceType: inferDeviceType() }, peerId)
         const approve = (peerId: string) => { const token = tokensRef.current.get(peerId); if (!token) return; approvedRef.current.add(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); void transmit({ type: 'member-approved', peerId, token }); hello(peerId) }
-        const announceAccess = (peerId: string) => void sendAccess({ type: 'status', locked: passwordRef.current.length > 0 }, peerId)
+        const announceAccess = (peerId: string) => void sendAccess({ type: 'status', locked: passwordRef.current.length > 0, passwordProof: passwordProofRef.current }, peerId)
         room.onPeerJoin(peerId => {
           setState(current => current === 'waiting' ? 'peer-found' : current)
           if (isCreator || joinedRef.current) {
@@ -75,20 +83,22 @@ export function useBeam(secret: string | null, password: string, displayName: st
             accessRetry = window.setInterval(() => {
               if (!stopped && !joinedRef.current) void sendAccess({ type: 'probe' }, peerId)
             }, 750)
-            void transmit({ type: 'join-request', name: displayName, deviceType: inferDeviceType(), token: ownTokenRef.current }, peerId)
+            void transmit({ type: 'join-request', name: displayName, deviceType: inferDeviceType(), token: ownTokenRef.current, passwordProof: initialProof }, peerId)
           }
         })
         room.onPeerLeave(peerId => { approvedRef.current.delete(peerId); knownRef.current.delete(peerId); tokensRef.current.delete(peerId); setPeers(current => current.filter(peer => peer.id !== peerId)); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); if (joinedRef.current) setState('disconnected') })
         onAccess((message, peerId) => {
-          if (message?.type === 'probe' && (isCreator || joinedRef.current)) void sendAccess({ type: 'status', locked: passwordRef.current.length > 0 }, peerId)
+          if (message?.type === 'probe' && (isCreator || joinedRef.current)) void sendAccess({ type: 'status', locked: passwordRef.current.length > 0, passwordProof: passwordProofRef.current }, peerId)
           if (message?.type === 'status') {
             clearInterval(accessRetry)
+            if (message.passwordProof) passwordProofRef.current = message.passwordProof
             if (message.locked && !passwordRef.current) { clearTimeout(timer); setPasswordRequired(true); setState('password-required') }
           }
         })
         onControl((raw, peerId) => { void (async () => {
           const message = parseMessage(await decryptMessage(keyRef.current ?? key, raw)); if (!message || stopped) return
-          if (message.type === 'join-request') { const candidate: Peer = { id: peerId, name: message.name.slice(0, 48), deviceType: message.deviceType }; knownRef.current.set(peerId, candidate); tokensRef.current.set(peerId, message.token); if (isCreator && approvedRef.current.size === 0) approve(peerId); else if (joinedRef.current && !approvedRef.current.has(peerId)) setPendingPeers(current => current.some(peer => peer.id === peerId) ? current : [...current, candidate]); return }
+          if (message.type === 'join-request') { const candidate: Peer = { id: peerId, name: message.name.slice(0, 48), deviceType: message.deviceType }; if (message.passwordProof !== passwordProofRef.current) return; knownRef.current.set(peerId, candidate); tokensRef.current.set(peerId, message.token); if ((isCreator && approvedRef.current.size === 0) || freeForAllRef.current) approve(peerId); else if (joinedRef.current && !approvedRef.current.has(peerId)) setPendingPeers(current => current.some(peer => peer.id === peerId) ? current : [...current, candidate]); return }
+          if (message.type === 'room-settings') { passwordProofRef.current = message.passwordProof; freeForAllRef.current = message.freeForAll; setFreeForAllState(message.freeForAll); return }
           if (message.type === 'member-approved') {
             // Approval is broadcast so every member can remove this request. Existing
             // members then introduce themselves to the accepted user individually.
@@ -138,7 +148,8 @@ export function useBeam(secret: string | null, password: string, displayName: st
   const cancelTransfer = useCallback((id: string) => { cancelledRef.current.add(id); void send({ type: 'file-cancel', transferId: id }); outgoingRef.current.delete(id); incomingRef.current.delete(id); setTransfers(current => current.map(item => item.id === id ? { ...item, status: 'cancelled' } : item)) }, [send])
   const admitPeer = useCallback((peerId: string) => { const token = tokensRef.current.get(peerId); if (!token) return; approvedRef.current.add(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); void send({ type: 'member-approved', peerId, token }) }, [send])
   const kickPeer = useCallback((peerId: string) => { approvedRef.current.delete(peerId); setPeers(current => current.filter(peer => peer.id !== peerId)); void send({ type: 'member-kicked', peerId }); void send({ type: 'kick-notice' }, peerId) }, [send])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, admitPeer, kickPeer }
+  const setFreeForAll = useCallback((enabled: boolean) => { if (!isCreator) return; freeForAllRef.current = enabled; setFreeForAllState(enabled); void send({ type: 'room-settings', passwordProof: passwordProofRef.current, freeForAll: enabled }) }, [isCreator, send])
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, admitPeer, kickPeer, freeForAll, setFreeForAll }
 }
 async function sendFileChunks(id: string, file: File, peerId: string, sendChunk: Sender<Uint8Array>, sendControl: (message: BeamMessage, peerId?: string) => Promise<void>, key: CryptoKey, isCancelled: (id: string) => boolean, report: (progress: number, speed: number) => void) { const started = Date.now(); for (let offset = 0, index = 0; offset < file.size; offset += CHUNK_SIZE, index++) { if (isCancelled(id)) return; const body = new Uint8Array(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer()); await sendChunk(await encryptBytes(key, encodeChunk(id, index, body)), peerId); const sent = Math.min(offset + body.byteLength, file.size); report(sent / file.size, sent / Math.max((Date.now() - started) / 1000, .1)); if (Date.now() - started > 16) await new Promise(resolve => setTimeout(resolve, 0)) }; await sendControl({ type: 'file-complete', transferId: id }, peerId); report(1, file.size / Math.max((Date.now() - started) / 1000, .1)) }
 function encodeChunk(id: string, index: number, body: Uint8Array) { const header = new TextEncoder().encode(`${id}:${index}:`); const result = new Uint8Array(header.length + body.length); result.set(header); result.set(body, header.length); return result }

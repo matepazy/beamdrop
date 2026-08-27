@@ -8,6 +8,13 @@ export async function encryptionKeyFor(secret: string, password = ''): Promise<C
   return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: textEncoder.encode('beamdrop-message-encryption-v1'), iterations: 210_000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
 }
 
+/** A non-reversible proof used to check a join password without sending it. */
+export async function passwordProofFor(secret: string, password: string): Promise<string> {
+  const bytes = textEncoder.encode(`${secret}\u0000${password}`)
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+  return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export async function encryptBytes(key: CryptoKey, bytes: Uint8Array): Promise<Uint8Array> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
   const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes))
