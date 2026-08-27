@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowDown,
   Check,
+  ChevronDown,
   Clipboard,
   Copy,
   FileText,
@@ -724,9 +725,14 @@ function BeamSession({
   const [passwordDraft, setPasswordDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const [composer, setComposer] = useState('')
+  const [participantsExpanded, setParticipantsExpanded] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      !window.matchMedia('(max-width: 620px)').matches,
+  )
 
   const [composerMode, setComposerMode] = useState<
-    'text' | 'link' | 'location'
+    'text' | 'location'
   >('text')
 
   const [shareStatus, setShareStatus] = useState('')
@@ -760,9 +766,7 @@ function BeamSession({
     setTimeout(() => setCopied(false), 1600)
   }
 
-  const openComposer = (
-    mode: 'text' | 'link' | 'location',
-  ) => {
+  const openComposer = (mode: 'text' | 'location') => {
     setComposerMode(mode)
     setShareStatus('')
 
@@ -791,7 +795,7 @@ function BeamSession({
       }
 
       setComposer(value)
-      openComposer(isUrl(value) ? 'link' : 'text')
+      openComposer('text')
     } catch {
       setShareStatus(
         'Allow clipboard access to add it here.',
@@ -964,18 +968,27 @@ function BeamSession({
           onClick={onEnd}
         >
           <LogOut size={16} />
-          End
+          <span className="end-button__label">End</span>
         </button>
       </div>
 
-      <section className="participants" aria-label="People in this Beam">
-        <div className="participants__title"><UserRound size={16} /><strong>People in this Beam</strong><span>{beam.peers.length + 1}</span></div>
+      <details
+        className="participants"
+        open={participantsExpanded}
+        onToggle={(event) => setParticipantsExpanded(event.currentTarget.open)}
+      >
+        <summary className="participants__title">
+          <UserRound size={16} />
+          <strong>People in this Beam</strong>
+          <span>{beam.peers.length + 1}</span>
+          <ChevronDown className="participants__chevron" size={17} aria-hidden="true" />
+        </summary>
         <div className="participants__list">
           <span className="participant"><i /> You</span>
           {beam.peers.map((peer) => <span className="participant" key={peer.id}><i /> {peer.name}<button type="button" onClick={() => beam.kickPeer(peer.id)} aria-label={`Remove ${peer.name}`}><UserRoundX size={15} /> Remove</button></span>)}
         </div>
         {beam.pendingPeers.length > 0 && <div className="join-requests"><strong>Join requests</strong>{beam.pendingPeers.map((peer) => <div key={peer.id}><span>{peer.name} wants to join</span><button className="primary small" type="button" onClick={() => beam.admitPeer(peer.id)}>Allow</button></div>)}</div>}
-      </section>
+      </details>
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
         {hasActivity ? (
@@ -1034,7 +1047,7 @@ function BeamSession({
                 sendMessage()
               }
             }}
-            placeholder={composerMode === 'link' ? 'Paste a link to send' : `Message ${recipient}`}
+            placeholder={`Message ${recipient}`}
             aria-label="Message"
           />
         )}
@@ -1042,7 +1055,6 @@ function BeamSession({
         <div className="chat-composer__bottom">
           <div className="attachment-actions" aria-label="Attach or share">
             <button className="attachment-action" type="button" onClick={() => fileInput.current?.click()}><FileText size={17} /><span>File</span></button>
-            <button className="attachment-action" type="button" onClick={() => openComposer('link')}><Link2 size={17} /><span>Link</span></button>
             <button className="attachment-action" type="button" onClick={addLocation}><MapPin size={17} /><span>Location</span></button>
             <button className="attachment-action" type="button" onClick={() => void addClipboard()}><Clipboard size={17} /><span>Paste</span></button>
           </div>

@@ -867,7 +867,6 @@ a:focus-visible {
   color: #fff;
 }
 
-
 /* =========================================================
    Technical details
    ========================================================= */
@@ -2163,7 +2162,7 @@ a:focus-visible {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
   padding: 16px 2px;
 }
@@ -2752,8 +2751,14 @@ a:focus-visible {
   gap: 9px;
 }
 
-.participants__title { color: #555552; font-size: 13px; }
+.participants__title {
+  color: #555552;
+  font-size: 13px;
+  list-style: none;
+}
+.participants__title::-webkit-details-marker { display: none; }
 .participants__title span { margin-left: auto; color: #686863; }
+.participants__chevron { display: none; }
 .participants__list { flex-wrap: wrap; margin-top: 10px; }
 .participant { padding: 5px 8px; border-radius: 999px; background: #f0f0ed; font-size: 12px; }
 .participant > i { width: 7px; height: 7px; border-radius: 50%; background: #46a36b; }
@@ -3002,6 +3007,103 @@ a:focus-visible {
     padding-top: 8px;
   }
 
+  .participants {
+    margin: 14px 0 0;
+    padding: 11px 12px;
+  }
+
+  .participants__title {
+    min-height: 44px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .participants__title:focus-visible {
+    outline: 2px solid #455ef5;
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+
+  .participants__chevron {
+    display: block;
+    margin-left: 3px;
+    transition: transform 0.18s ease;
+  }
+
+  .participants[open] .participants__chevron {
+    transform: rotate(180deg);
+  }
+
+  .participants__list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-right: -4px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .participants__list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .participant {
+    flex: none;
+  }
+
+  .conversation {
+    margin: 12px 0;
+    scroll-padding-bottom: 12px;
+  }
+
+  .conversation-feed {
+    gap: 12px;
+    padding: 12px 0 16px;
+  }
+
+  .conversation-empty {
+    align-content: start;
+    padding-top: clamp(52px, 16svh, 112px);
+  }
+
+  .conversation .feed-item,
+  .conversation .transfer-card {
+    width: 94%;
+    padding: 13px 14px;
+  }
+
+  .chat-composer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-radius: 16px;
+  }
+
+  .chat-composer > textarea {
+    min-height: 58px;
+    padding: 6px 2px 9px;
+    font-size: 16px;
+  }
+
+  .chat-composer__bottom {
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .attachment-actions {
+    justify-content: flex-start;
+    gap: 4px;
+  }
+
+  .attachment-action {
+    min-width: 52px;
+    min-height: 44px;
+    padding: 4px 8px;
+  }
+
+  .send-message {
+    width: 46px;
+    min-height: 44px;
+    border-radius: 12px;
+  }
+
   .dropzone {
     margin-top: 28px;
 
@@ -3038,5 +3140,310 @@ a:focus-visible {
     max-height: 140px;
 
     gap: 24px;
+  }
+}
+
+
+/* =========================================================
+   Phone workspace
+   The connected Beam is a thumb-first conversation, not a
+   shrunken desktop work area.
+   ========================================================= */
+
+@media (max-width: 620px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    overscroll-behavior-y: none;
+  }
+
+  .session-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left));
+    background: #f5f4f1;
+  }
+
+  .session-shell .topbar {
+    width: 100%;
+    height: 52px;
+    justify-content: flex-start;
+  }
+
+  .session-shell .wordmark {
+    width: 82px;
+    min-width: 82px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .session-shell .wordmark .beam-logo {
+    display: block;
+  }
+
+  .room {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .room-head {
+    min-height: 48px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 0 4px;
+  }
+
+  .room-head > :first-child {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .identity {
+    min-height: 44px;
+    max-width: 100%;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .identity input {
+    width: min(33vw, 136px);
+    min-height: 38px;
+    font-size: 16px;
+  }
+
+  .settings-button,
+  .end-button {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 12px;
+    line-height: 0;
+  }
+
+  .end-button {
+    color: #8a403b;
+    aspect-ratio: 1;
+  }
+
+  .end-button svg {
+    display: block;
+    margin: 0;
+    transform: translateY(1px);
+  }
+
+  .end-button__label {
+    display: none;
+  }
+
+  .participants {
+    margin: 2px 0 0;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+
+  .participants__title {
+    min-height: 46px;
+  }
+
+  .conversation {
+    margin: 8px 0 10px;
+    border-color: rgba(21, 21, 21, 0.1);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .conversation-empty {
+    width: min(270px, 100%);
+    padding-top: clamp(44px, 12svh, 88px);
+  }
+
+  .conversation-empty p {
+    font-size: 13px;
+  }
+
+  .conversation .feed-item,
+  .conversation .transfer-card {
+    width: 90%;
+    max-width: 440px;
+    border-radius: 16px;
+  }
+
+  .chat-composer {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    border-radius: 18px;
+    box-shadow: 0 -8px 22px rgba(21, 21, 21, 0.06), 0 10px 28px rgba(21, 21, 21, 0.08);
+  }
+
+  .chat-composer > textarea {
+    min-height: 52px;
+    max-height: 28svh;
+    padding: 7px 5px 10px;
+    line-height: 1.4;
+  }
+
+  .attachment-actions {
+    flex: 1;
+    gap: 2px;
+  }
+
+  .attachment-action {
+    min-width: 52px;
+    min-height: 46px;
+    flex: 1;
+    border-radius: 11px;
+    color: #454541;
+  }
+
+  .attachment-action span {
+    font-size: 10px;
+  }
+
+  .send-message {
+    width: 48px;
+    min-width: 48px;
+    min-height: 46px;
+    border-radius: 14px;
+  }
+
+  .share-status {
+    min-height: 0;
+    margin: 5px 2px 0;
+    font-size: 11px;
+  }
+
+  .dialog-backdrop {
+    align-items: end;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .settings-dialog {
+    width: 100%;
+    max-height: min(78dvh, 650px);
+    overflow-y: auto;
+    padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 16px 16px;
+  }
+
+  .settings-dialog__head > button,
+  .settings-dialog__password .primary {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .settings-dialog__password {
+    align-items: stretch;
+  }
+
+  .settings-dialog__password input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .toggle {
+    width: 52px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    position: relative;
+    background: transparent;
+  }
+
+  .toggle::before {
+    content: "";
+    position: absolute;
+    inset: 6px 0;
+    border-radius: 999px;
+    background: #c9c9c3;
+    transition: background .16s ease;
+  }
+
+  .toggle span {
+    width: 24px;
+    height: 24px;
+    position: absolute;
+    z-index: 1;
+    top: 10px;
+    left: 4px;
+    margin: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  }
+
+  .toggle.on {
+    background: transparent;
+  }
+
+  .toggle.on::before {
+    background: #455ef5;
+  }
+
+  .toggle.on span {
+    transform: translateX(20px);
+  }
+
+  .waiting {
+    padding:
+      max(16px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left)) !important;
+  }
+
+  .waiting .beam-card {
+    width: 100%;
+    padding: 28px 20px 22px;
+    border-radius: 20px;
+  }
+
+  .waiting h1 {
+    overflow-wrap: anywhere;
+    font-size: clamp(2rem, 10vw, 3.2rem);
+  }
+
+  .waiting-actions button {
+    min-height: 46px;
+  }
+
+  @media (hover: none) {
+    .primary:hover {
+      transform: none;
+      background: #151515;
+      color: #fff;
+    }
+
+    .end-button:hover,
+    .quiet-button:hover,
+    .share-action:hover,
+    .attachment-action:hover {
+      transform: none;
+      background: transparent;
+      color: inherit;
+    }
+
+    .send-message:not(:disabled):hover {
+      background: #455ef5;
+    }
+
+    .primary:active,
+    .settings-button:active,
+    .end-button:active,
+    .attachment-action:active,
+    .send-message:not(:disabled):active {
+      transform: scale(0.96);
+    }
   }
 }
