@@ -3,19 +3,7 @@ import { Menu, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 export function Logo() {
-  return (
-    <svg className="beam-logo" viewBox="0 0 178 40" aria-hidden="true">
-      <text className="beam-logo__beam" x="0" y="30">
-        beam
-      </text>
-
-      <text className="beam-logo__drop" x="88" y="30">
-        Drop
-      </text>
-
-      <circle className="beam-logo__dot" cx="169" cy="26" r="4" />
-    </svg>
-  )
+  return <img className="beam-logo" src="/beam-logo.svg" alt="" />
 }
 
 export function InfoMenu() {
@@ -195,4 +183,3 @@ export function InfoMenu() {
     </div>
   )
 }
-

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Clipboard, FileText, Link2, LogOut, MapPin, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { ChevronDown, Clipboard, Download, FileText, LogOut, MapPin, Plus, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -32,11 +32,8 @@ export function ConnectedPage({
   const [passwordDraft, setPasswordDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const [composer, setComposer] = useState('')
-  const [participantsExpanded, setParticipantsExpanded] = useState(
-    () =>
-      typeof window === 'undefined' ||
-      !window.matchMedia('(max-width: 620px)').matches,
-  )
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false)
+  const [participantsExpanded, setParticipantsExpanded] = useState(false)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -61,6 +58,12 @@ export function ConnectedPage({
         conversationRef.current.scrollHeight
     }
   }, [activityCount, connected])
+
+  useEffect(() => {
+    if (composerInput.current) {
+      resizeComposer(composerInput.current)
+    }
+  }, [composer])
 
   const recipient =
     beam.peers[0]?.name ?? 'your other device'
@@ -91,6 +94,17 @@ export function ConnectedPage({
     setShareStatus('')
   }
 
+  const resizeComposer = (input: HTMLTextAreaElement) => {
+    const maximumHeight = 108
+
+    // Measure from zero rather than `auto`: a textarea's intrinsic auto height
+    // is two rows, which otherwise prevents it from shrinking back to one row.
+    input.style.height = '0px'
+    input.style.height = `${Math.min(input.scrollHeight, maximumHeight)}px`
+    input.style.overflowY =
+      input.scrollHeight > maximumHeight ? 'auto' : 'hidden'
+  }
+
   const addClipboard = async () => {
     try {
       const value =
@@ -110,8 +124,10 @@ export function ConnectedPage({
     }
   }
 
-  const addLocation = () =>
+  const addLocation = () => {
+    setAttachmentsOpen(false)
     openComposer('location')
+  }
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -301,7 +317,7 @@ export function ConnectedPage({
         {hasActivity ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
-              <TransferCard key={entry.transfer.id} item={entry.transfer} recipient={recipient} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
+              <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
             ) : <FeedCard key={entry.item.id} item={entry.item} />)}
           </div>
         ) : (
@@ -344,29 +360,38 @@ export function ConnectedPage({
             </div>
           </div>
         ) : (
-          <textarea
-            ref={composerInput}
-            value={composer}
-            onChange={(event) => setComposer(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                sendMessage()
-              }
-            }}
-            placeholder={`Message ${recipient}`}
-            aria-label="Message"
-          />
+          <div className="chat-composer__text-row">
+            <div className="attachment-actions">
+              <button className="attachment-action" type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label="More sharing options" aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
+              {attachmentsOpen && <div className="attachment-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
+                <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
+              </div>}
+            </div>
+            <textarea
+              ref={composerInput}
+              value={composer}
+              onChange={(event) => {
+                setComposer(event.target.value)
+                resizeComposer(event.currentTarget)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  sendMessage()
+                }
+              }}
+              placeholder={`Message ${recipient}`}
+              aria-label="Message"
+            />
+            <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /></button>
+          </div>
         )}
 
-        <div className="chat-composer__bottom">
-          <div className="attachment-actions" aria-label="Attach or share">
-            <button className="attachment-action" type="button" onClick={() => fileInput.current?.click()}><FileText size={17} /><span>File</span></button>
-            <button className="attachment-action" type="button" onClick={addLocation}><MapPin size={17} /><span>Location</span></button>
-            <button className="attachment-action" type="button" onClick={() => void addClipboard()}><Clipboard size={17} /><span>Paste</span></button>
-          </div>
-          <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /><span>Send</span></button>
-        </div>
+        {composerMode === 'location' && <div className="chat-composer__bottom">
+          <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send location"><Send size={18} /><span>Send</span></button>
+        </div>}
       </form>
 
       {shareStatus && (
@@ -525,13 +550,11 @@ function SelectedPin({
 
 function TransferCard({
   item,
-  recipient,
   onAccept,
   onDecline,
   onCancel,
 }: {
   item: TransferRecord
-  recipient: string
   onAccept(): void
   onDecline(): void
   onCancel(): void
@@ -539,10 +562,14 @@ function TransferCard({
   const needsReply =
     item.direction === 'receiving' &&
     item.status === 'offered'
+  const isComplete = item.status === 'complete'
+  const timestamp = formatMessageTime(item.createdAt)
 
   return (
     <motion.article
       className={`transfer-card ${item.direction === 'receiving' ? 'received-message' : 'sent-message'}`}
+      data-time={timestamp}
+      title={timestamp}
       initial={{
         opacity: 0,
         y: 8,
@@ -563,11 +590,7 @@ function TransferCard({
           </strong>
 
           <span>
-            {formatBytes(item.size)} ·{' '}
-            {item.direction ===
-            'sending'
-              ? `To ${recipient}`
-              : `From ${item.sender}`} · {formatMessageTime(item.createdAt)}
+            {formatBytes(item.size)}
           </span>
         </div>
 
@@ -589,18 +612,19 @@ function TransferCard({
           </div>
         ) : (
           <>
-            <div className="progress">
-              <i
-                style={{
-                  transform: `scaleX(${item.progress})`,
-                }}
-              />
-            </div>
+            {!isComplete && (
+              <div className="progress">
+                <i
+                  style={{
+                    transform: `scaleX(${item.progress})`,
+                  }}
+                />
+              </div>
+            )}
 
             <div className="transfer-meta">
-              <span>
-                {item.status ===
-                'complete'
+              <span className={isComplete ? 'transfer-status' : undefined}>
+                {isComplete
                   ? 'Complete'
                   : item.status ===
                       'declined'
@@ -636,40 +660,51 @@ function FeedCard({
 }: {
   item: FeedItem
 }) {
+  const location =
+    item.kind === 'link'
+      ? locationFromUrl(item.value)
+      : null
+
+  const timestamp = formatMessageTime(item.createdAt)
+
   return (
-    <article className={`feed-item ${item.received ? 'received-message' : 'sent-message'}`}>
-      <div className="feed-icon">
-        {item.kind === 'file' ? (
-          <FileText size={17} />
-        ) : item.kind === 'link' ? (
-          <Link2 size={17} />
-        ) : (
-          <FileText size={17} />
-        )}
-      </div>
+    <div className={`message-stack ${item.received ? 'message-stack--received' : 'message-stack--sent'}`}>
+      {item.received && <span className="message-sender">{item.sender}</span>}
+      <article className={`feed-item feed-item--${location ? 'location' : item.kind} ${item.received ? 'received-message' : 'sent-message'}`} data-time={timestamp} title={timestamp}>
+        <div className={item.kind === 'file' ? 'file-message__details' : undefined}>
+          {item.kind === 'file' && <span className="file-message__mark" aria-hidden="true"><FileText size={16} /></span>}
+          <div>
+            <strong>
+              {location
+                ? 'Location'
+                : item.kind === 'link'
+                ? hostnameFor(item.value)
+                : item.value}
+            </strong>
 
-      <div>
-        <strong>
-          {item.kind === 'link'
-            ? hostnameFor(item.value)
-            : item.value}
-        </strong>
+            {item.kind === 'file' && item.size !== undefined && (
+              <span className="file-message__size">{formatBytes(item.size)}</span>
+            )}
 
-        <span>
-          {item.received ? `From ${item.sender}` : 'You'} · {formatMessageTime(item.createdAt)}
-          {item.size
-            ? ` · ${formatBytes(item.size)}`
-            : ''}
-        </span>
-      </div>
+            {location && (
+              <LocationPreview
+                location={location}
+                href={item.value}
+              />
+            )}
+          </div>
+        </div>
 
       {item.kind === 'file' &&
       item.objectUrl ? (
         <a
+          className="file-message__download"
           href={item.objectUrl}
           download={item.value}
+          aria-label={`Download ${item.value}`}
+          title={`Download ${item.value}`}
         >
-          Save
+          <Download size={17} />
         </a>
       ) : item.kind === 'link' ? (
         <a
@@ -690,7 +725,75 @@ function FeedCard({
           Copy
         </button>
       )}
-    </article>
+      </article>
+    </div>
+  )
+}
+
+function locationFromUrl(value: string) {
+  try {
+    const url = new URL(value)
+
+    if (!url.hostname.endsWith('openstreetmap.org')) {
+      return null
+    }
+
+    const lat = Number(url.searchParams.get('mlat'))
+    const lng = Number(url.searchParams.get('mlon'))
+
+    return Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat, lng }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function LocationPreview({
+  location,
+  href,
+}: {
+  location: { lat: number; lng: number }
+  href: string
+}) {
+  return (
+    <a
+      className="location-preview"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Open shared location in OpenStreetMap"
+    >
+      <MapContainer
+        center={[location.lat, location.lng]}
+        zoom={14}
+        zoomControl={false}
+        attributionControl={false}
+        dragging={false}
+        scrollWheelZoom={false}
+        doubleClickZoom={false}
+        touchZoom={false}
+        keyboard={false}
+        className="location-preview__map"
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <CircleMarker
+          center={[location.lat, location.lng]}
+          radius={7}
+          pathOptions={{
+            color: '#fff',
+            fillColor: '#455ef5',
+            fillOpacity: 1,
+            weight: 3,
+          }}
+        />
+      </MapContainer>
+      <span className="location-preview__label">
+        View on map
+      </span>
+    </a>
   )
 }
 

@@ -211,9 +211,9 @@ export function LandingPage({
 
       <section className="closing">
         <h2>
-          Pass it on.
+          Send it fast.
           <br />
-          Then it’s gone.
+          Nothing lasts.
         </h2>
 
         <button
