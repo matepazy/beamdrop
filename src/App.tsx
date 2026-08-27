@@ -315,8 +315,37 @@ function Home({
   onJoin(secret: string): void
 }) {
   const [join, setJoin] = useState('')
+  const [navOnDarkSurface, setNavOnDarkSurface] = useState(false)
   const details = useRef<HTMLElement>(null)
   const create = () => onCreate(generatePassphrase(), '')
+
+  useEffect(() => {
+    const darkSections = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.how-it-works, .closing, .site-footer',
+        ),
+      )
+
+    const syncNavContrast = () => {
+      const navY = 48
+      const isOverDarkSection = darkSections().some((section) => {
+        const { top, bottom } = section.getBoundingClientRect()
+        return top <= navY && bottom >= navY
+      })
+
+      setNavOnDarkSurface(isOverDarkSection)
+    }
+
+    syncNavContrast()
+    addEventListener('scroll', syncNavContrast, { passive: true })
+    addEventListener('resize', syncNavContrast)
+
+    return () => {
+      removeEventListener('scroll', syncNavContrast)
+      removeEventListener('resize', syncNavContrast)
+    }
+  }, [])
 
   const revealDetails = () =>
     details.current?.scrollIntoView({
@@ -333,7 +362,7 @@ function Home({
     >
       <section className="landing-hero">
         <div
-          className="floating-nav"
+          className={`floating-nav${navOnDarkSurface ? ' floating-nav--on-dark' : ''}`}
           aria-label="Beam introduction"
         >
           <button
@@ -585,6 +614,12 @@ function InfoMenu() {
   useEffect(() => {
     if (!open) return
 
+    const shouldLockScroll = matchMedia('(max-width: 819px)').matches
+
+    if (shouldLockScroll) {
+      document.body.classList.add('menu-open')
+    }
+
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
         setOpen(false)
@@ -603,6 +638,10 @@ function InfoMenu() {
     return () => {
       document.removeEventListener('mousedown', closeOnOutsideClick)
       document.removeEventListener('keydown', closeOnEscape)
+
+      if (shouldLockScroll) {
+        document.body.classList.remove('menu-open')
+      }
     }
   }, [open])
 
@@ -619,7 +658,7 @@ function InfoMenu() {
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
       >
-        Menu
+        {open ? 'Close' : 'Menu'}
 
         <AnimatePresence mode="wait" initial={false}>
           {open ? (
@@ -658,6 +697,22 @@ function InfoMenu() {
 
       <AnimatePresence>
         {open && (
+          <motion.button
+            className="info-menu__backdrop"
+            type="button"
+            tabIndex={-1}
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {open && (
           <motion.div
             className="info-menu__items"
             role="menu"
@@ -682,17 +737,25 @@ function InfoMenu() {
               ease: [0.16, 1, 0.3, 1],
             }}
           >
-            {items.map((item) => (
-              <a
+            {items.map((item, index) => (
+              <motion.a
                 key={item.label}
                 href={item.href}
                 role="menuitem"
                 target={item.external ? '_blank' : undefined}
                 rel={item.external ? 'noopener noreferrer' : undefined}
                 onClick={() => setOpen(false)}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 6 }}
+                transition={{
+                  duration: 0.2,
+                  delay: index * 0.04,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
               >
                 {item.label}
-              </a>
+              </motion.a>
             ))}
           </motion.div>
         )}
