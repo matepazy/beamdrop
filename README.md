@@ -4,16 +4,15 @@
 
 # BeamDrop.
 
-
-
 Private, temporary, peer-to-peer sharing between browsers.
 
 Beam lets you send files, text, links, clipboard contents, and map locations directly from one browser to another. No account is required, and shared content is not uploaded to a Beam server.
 
 ## Highlights
 
-- Create a private Beam with a short code or memorable passphrase.
-- Join from another browser with the code, passphrase, or QR link.
+- Create a private Beam with a short code or memorable passphrase, optionally protected by a password.
+- Join an active Beam with its code, passphrase, or QR link; inactive codes are rejected instead of becoming new sessions.
+- The first guest joins automatically; later guests need approval from someone already in the Beam and can be removed by any participant.
 - Transfer files with progress, accept/decline, and cancel controls.
 - Share text, links, clipboard contents, and map locations.
 - Use a local display name for the current device.
@@ -38,7 +37,7 @@ WebRTC DataChannel
 Direct browser-to-browser transfer
 ```
 
-The human-readable Beam secret is normalized and hashed before it becomes a room identifier. Trystero's tracker adapter helps browsers that know the same secret discover one another, after which content travels over WebRTC DataChannels.
+The human-readable Beam secret is normalized and hashed before it becomes a room identifier. Trystero's Nostr relay adapter helps browsers that know the same secret discover one another, after which content travels over WebRTC DataChannels.
 
 ## Privacy model
 
@@ -48,7 +47,7 @@ Beam is designed for temporary exchanges:
 - Files, messages, links, secrets, and session history are not persisted by Beam.
 - Only the local display name and theme preferences may be stored in `localStorage`.
 - Incoming files are held in browser memory until the recipient saves them.
-- WebRTC transport is browser-encrypted. On restrictive networks, an external TURN provider may relay encrypted traffic.
+- WebRTC transport is browser-encrypted. Beam also encrypts control messages and file chunks with a session-only AES-256-GCM key derived from the Beam secret and optional password. On restrictive networks, an external TURN provider may relay encrypted traffic.
 
 Beam still depends on internet connectivity for signaling and peer connection setup. Do not share sensitive information unless the participants and network environment are trusted.
 

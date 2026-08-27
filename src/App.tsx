@@ -7,12 +7,15 @@ import {
   FileText,
   Link2,
   LoaderCircle,
+  LockKeyhole,
   LogOut,
   MapPin,
   Menu,
   Plus,
   QrCode,
   Send,
+  UserRound,
+  UserRoundX,
   WifiOff,
   X,
 } from 'lucide-react'
@@ -34,8 +37,8 @@ import { useBeam, type FeedItem, type TransferRecord } from './hooks/useBeam'
 
 type View =
   | { mode: 'home' }
-  | { mode: 'waiting'; secret: string }
-  | { mode: 'room'; secret: string }
+  | { mode: 'waiting'; secret: string; password: string; isCreator: boolean }
+  | { mode: 'room'; secret: string; password: string; isCreator: boolean }
   | { mode: 'page'; page: 'guidelines' | 'privacy' }
 
 function route(): View {
@@ -51,8 +54,10 @@ function route(): View {
 
   return match
     ? {
-        mode: 'waiting',
-        secret: decodeURIComponent(match[1]),
+      mode: 'waiting',
+      secret: decodeURIComponent(match[1]),
+        password: '',
+        isCreator: false,
       }
     : {
         mode: 'home',
@@ -108,7 +113,7 @@ export function App() {
         : `/join/${encodeURIComponent(next.secret)}`
   }
 
-  const createBeam = (secret: string) => {
+  const createBeam = (secret: string, password: string) => {
     if (launching) return
 
     setLaunching(true)
@@ -121,6 +126,8 @@ export function App() {
       go({
         mode: 'waiting',
         secret,
+        password,
+        isCreator: true,
       })
 
       setLaunching(false)
@@ -165,6 +172,8 @@ export function App() {
               go({
                 mode: 'waiting',
                 secret,
+                password: '',
+                isCreator: false,
               })
             }
           />
@@ -174,12 +183,22 @@ export function App() {
           <BeamSession
             key={view.secret}
             secret={view.secret}
+            password={view.password}
+            isCreator={view.isCreator}
             displayName={displayName}
             onRename={(name) => {
               setDisplayName(name)
               localStorage.setItem('beam:display-name', name)
             }}
             onEnd={() => go({ mode: 'home' })}
+            onPasswordChange={(password) =>
+              go({
+                mode: 'waiting',
+                secret: view.secret,
+                password,
+                isCreator: view.isCreator,
+              })
+            }
           />
         )}
       </AnimatePresence>
@@ -290,11 +309,12 @@ function Home({
   onCreate,
   onJoin,
 }: {
-  onCreate(secret: string): void
+  onCreate(secret: string, password: string): void
   onJoin(secret: string): void
 }) {
   const [join, setJoin] = useState('')
   const details = useRef<HTMLElement>(null)
+  const create = () => onCreate(generatePassphrase(), '')
 
   const revealDetails = () =>
     details.current?.scrollIntoView({
@@ -346,7 +366,7 @@ function Home({
         <div className="hero-actions">
           <button
             className="primary create-button"
-            onClick={() => onCreate(generatePassphrase())}
+            onClick={create}
           >
             Start a private Beam
             <Plus size={18} />
@@ -459,7 +479,7 @@ function Home({
 
         <button
           className="primary"
-          onClick={() => onCreate(generatePassphrase())}
+          onClick={create}
         >
           Start sharing
           <Plus size={18} />
@@ -491,7 +511,7 @@ function Home({
             <span className="transfer-path__index">02</span>
             <h3>A brief rendezvous</h3>
             <p>
-              A public signaling tracker helps browsers with the same room
+              Public signaling relays help browsers with the same room
               identifier discover one another.
             </p>
           </div>
@@ -681,16 +701,22 @@ function InfoMenu() {
 
 function BeamSession({
   secret,
+  password,
+  isCreator,
   displayName,
   onRename,
   onEnd,
+  onPasswordChange,
 }: {
   secret: string
+  password: string
+  isCreator: boolean
   displayName: string
   onRename(name: string): void
   onEnd(): void
+  onPasswordChange(password: string): void
 }) {
-  const beam = useBeam(secret, displayName)
+  const beam = useBeam(secret, password, displayName, isCreator)
 
   const [qrOpen, setQrOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -710,7 +736,6 @@ function BeamSession({
   const fileInput = useRef<HTMLInputElement>(null)
   const composerInput = useRef<HTMLTextAreaElement>(null)
   const conversationRef = useRef<HTMLElement>(null)
-
   const connected = beam.state === 'connected'
   const activityCount = beam.feed.length + beam.transfers.length
 
@@ -819,6 +844,10 @@ function BeamSession({
         secret={secret}
         state={beam.state}
         peers={beam.peers.length}
+        password={password}
+        isCreator={isCreator}
+        passwordRequired={beam.passwordRequired}
+        onPasswordChange={onPasswordChange}
         onCopy={copy}
         copied={copied}
         onQr={() => setQrOpen(true)}
@@ -900,11 +929,6 @@ function BeamSession({
     >
       <div className="room-head">
         <div>
-          <h1>
-            Connected with <span>{recipient}</span>
-            <i />
-          </h1>
-
           <label className="identity">
             You’re{' '}
             <input
@@ -927,6 +951,15 @@ function BeamSession({
           End
         </button>
       </div>
+
+      <section className="participants" aria-label="People in this Beam">
+        <div className="participants__title"><UserRound size={16} /><strong>People in this Beam</strong><span>{beam.peers.length + 1}</span></div>
+        <div className="participants__list">
+          <span className="participant"><i /> You</span>
+          {beam.peers.map((peer) => <span className="participant" key={peer.id}><i /> {peer.name}<button type="button" onClick={() => beam.kickPeer(peer.id)} aria-label={`Remove ${peer.name}`}><UserRoundX size={15} /> Remove</button></span>)}
+        </div>
+        {beam.pendingPeers.length > 0 && <div className="join-requests"><strong>Join requests</strong>{beam.pendingPeers.map((peer) => <div key={peer.id}><span>{peer.name} wants to join</span><button className="primary small" type="button" onClick={() => beam.admitPeer(peer.id)}>Allow</button></div>)}</div>}
+      </section>
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
         {hasActivity ? (
@@ -1109,6 +1142,10 @@ function Waiting({
   secret,
   state,
   peers,
+  password,
+  isCreator,
+  passwordRequired,
+  onPasswordChange,
   onCopy,
   copied,
   onQr,
@@ -1119,6 +1156,10 @@ function Waiting({
   secret: string
   state: string
   peers: number
+  password: string
+  isCreator: boolean
+  passwordRequired: boolean
+  onPasswordChange(password: string): void
   onCopy(): void
   copied: boolean
   onQr(): void
@@ -1126,9 +1167,22 @@ function Waiting({
   qrOpen: boolean
   closeQr(): void
 }) {
+  const [passwordDraft, setPasswordDraft] = useState('')
+  const [editingLock, setEditingLock] = useState(false)
+
+  useEffect(() => {
+    setPasswordDraft(password)
+  }, [password])
+
   const label =
     state === 'failed'
       ? "Couldn't establish a connection."
+      : state === 'password-required'
+        ? 'This Beam is password protected.'
+      : state === 'not-found'
+        ? 'This Beam is not active. Check the code and try again.'
+        : state === 'kicked'
+          ? 'You were removed from this Beam.'
       : state === 'disconnected'
         ? 'Connection lost. Waiting to reconnect…'
         : peers
@@ -1177,15 +1231,47 @@ function Waiting({
         }}
       >
         <p className="waiting-lead">
-          Your private Beam is ready.
+          {passwordRequired
+            ? 'Password required'
+            : isCreator
+              ? 'Your private Beam is ready.'
+              : 'Joining private Beam'}
         </p>
 
         <h1>{secret}</h1>
 
-        <p className="share-instruction">
-          Send this code to the other device. It joins the same temporary
-          space.
-        </p>
+        {passwordRequired ? (
+          <form
+            className="password-panel"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (passwordDraft.trim()) onPasswordChange(passwordDraft)
+            }}
+          >
+            <p>Enter the password shared by the person who started this Beam.</p>
+            <label htmlFor="beam-password">Password</label>
+            <div className="password-panel__form">
+              <input
+                autoFocus
+                id="beam-password"
+                type="password"
+                autoComplete="current-password"
+                value={passwordDraft}
+                onChange={(event) => setPasswordDraft(event.target.value)}
+                placeholder="Enter password"
+              />
+              <button className="primary" disabled={!passwordDraft.trim()}>
+                Join
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="share-instruction">
+            {isCreator
+              ? 'Send this code to the other device. It joins the same temporary space.'
+              : 'Looking for an active Beam with this code.'}
+          </p>
+        )}
 
         <div className="waiting-actions">
           <button
@@ -1208,6 +1294,61 @@ function Waiting({
             QR code
           </button>
         </div>
+
+        {isCreator && !passwordRequired && (
+          <div className="lock-panel">
+            {editingLock ? (
+              <form
+                className="password-panel"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (passwordDraft.trim()) {
+                    onPasswordChange(passwordDraft)
+                    setEditingLock(false)
+                  }
+                }}
+              >
+                <label htmlFor="beam-lock-password">Set a password</label>
+                <div className="password-panel__form">
+                  <input
+                    autoFocus
+                    id="beam-lock-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={passwordDraft}
+                    onChange={(event) => setPasswordDraft(event.target.value)}
+                    placeholder="Choose a password"
+                  />
+                  <button className="primary" disabled={!passwordDraft.trim()}>
+                    Save
+                  </button>
+                </div>
+                <button
+                  className="text-button lock-panel__cancel"
+                  type="button"
+                  onClick={() => {
+                    setPasswordDraft(password)
+                    setEditingLock(false)
+                  }}
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : password ? (
+              <div className="lock-panel__summary">
+                <span><LockKeyhole size={16} /> Password protected</span>
+                <div>
+                  <button className="text-button" onClick={() => setEditingLock(true)}>Change</button>
+                  <button className="text-button" onClick={() => onPasswordChange('')}>Remove</button>
+                </div>
+              </div>
+            ) : (
+              <button className="lock-panel__add" onClick={() => setEditingLock(true)}>
+                <LockKeyhole size={16} /> Add a password lock
+              </button>
+            )}
+          </div>
+        )}
 
         <div
           className={`connection ${state}`}

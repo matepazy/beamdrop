@@ -1190,6 +1190,131 @@ a:focus-visible {
   line-height: 1.5;
 }
 
+.password-panel {
+  max-width: 390px;
+
+  margin: 19px auto 0;
+
+  text-align: left;
+}
+
+.password-panel p {
+  margin: 0 0 14px;
+
+  color: #c4c4bf;
+  line-height: 1.5;
+}
+
+.password-panel label {
+  display: block;
+
+  margin-bottom: 7px;
+
+  color: #e7e7e2;
+
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.password-panel__form {
+  display: flex;
+  gap: 8px;
+}
+
+.password-panel input {
+  min-width: 0;
+  flex: 1;
+
+  padding: 10px 12px;
+
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+
+  outline: none;
+
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+
+  font: inherit;
+}
+
+.password-panel input:focus {
+  border-color: #8e9dff;
+  box-shadow: 0 0 0 3px rgba(69, 94, 245, 0.25);
+}
+
+.password-panel input::placeholder {
+  color: #a7a7a2;
+}
+
+.password-panel .primary {
+  padding: 9px 14px;
+}
+
+.lock-panel {
+  max-width: 390px;
+
+  margin: 0 auto 22px;
+}
+
+.lock-panel .password-panel {
+  margin-top: 0;
+}
+
+.lock-panel__add,
+.lock-panel__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  width: 100%;
+
+  padding: 11px 13px;
+
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 10px;
+
+  background: rgba(255, 255, 255, 0.06);
+  color: #e7e7e2;
+
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lock-panel__add {
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.lock-panel__add:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lock-panel__summary > span,
+.lock-panel__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.lock-panel__summary > div {
+  display: flex;
+  gap: 12px;
+}
+
+.lock-panel__summary .text-button {
+  color: #b9c3ff;
+}
+
+.lock-panel__cancel {
+  margin-top: 6px;
+
+  color: #c4c4bf;
+}
+
 .waiting-actions {
   display: flex;
   justify-content: center;
@@ -1319,37 +1444,6 @@ a:focus-visible {
   gap: 20px;
 }
 
-.room-head h1 {
-  margin: 0;
-
-  font-size: clamp(2.25rem, 5vw, 4rem);
-  line-height: 0.95;
-  letter-spacing: -0.055em;
-}
-
-.room-head h1 span {
-  color: #455ef5;
-}
-
-.room-head h1 i {
-  display: inline-block;
-
-  width: 10px;
-  height: 10px;
-
-  margin-left: 9px;
-
-  border-radius: 100%;
-
-  background: #4bd28d;
-
-  vertical-align: middle;
-
-  box-shadow:
-    0 0 0 4px rgba(75, 210, 141, 0.16);
-}
-
-
 /* =========================================================
    Room buttons
    ========================================================= */
@@ -1392,7 +1486,7 @@ a:focus-visible {
   align-items: center;
   gap: 4px;
 
-  margin-top: 14px;
+  margin-top: 0;
 
   color: #686863;
 
@@ -2495,10 +2589,6 @@ a:focus-visible {
     padding-top: 4px;
   }
 
-  .room-head h1 {
-    font-size: clamp(2rem, 10vw, 2.75rem);
-  }
-
   .dropzone {
     margin-top: 18px;
 
@@ -2577,25 +2667,8 @@ a:focus-visible {
   padding-top: 6px;
 }
 
-.room-head h1 {
-  max-width: 600px;
-
-  font-size: clamp(2rem, 3.8vw, 2.75rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-
-.room-head h1 i {
-  width: 8px;
-  height: 8px;
-
-  margin-left: 7px;
-
-  box-shadow: none;
-}
-
 .identity {
-  margin-top: 10px;
+  margin-top: 0;
 
   color: #686863;
 }
@@ -2610,6 +2683,29 @@ a:focus-visible {
   box-shadow: none;
   background: transparent;
 }
+
+.participants {
+  margin: 22px 0 4px;
+  padding: 13px 15px;
+  border: 1px solid rgba(21, 21, 21, .12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .58);
+}
+
+.participants__title, .participants__list, .participant, .join-requests > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.participants__title { color: #555552; font-size: 13px; }
+.participants__title span { margin-left: auto; color: #686863; }
+.participants__list { flex-wrap: wrap; margin-top: 10px; }
+.participant { padding: 5px 8px; border-radius: 999px; background: #f0f0ed; font-size: 12px; }
+.participant > i { width: 7px; height: 7px; border-radius: 50%; background: #46a36b; }
+.participant button { border: 0; padding: 0; background: transparent; color: #8a403b; font: inherit; display: inline-flex; align-items: center; gap: 3px; }
+.join-requests { margin-top: 12px; padding-top: 11px; border-top: 1px solid rgba(21, 21, 21, .1); font-size: 12px; }
+.join-requests > div { justify-content: space-between; margin-top: 8px; }
 
 
 /* =========================================================
@@ -2850,10 +2946,6 @@ a:focus-visible {
 
   .room-head {
     padding-top: 8px;
-  }
-
-  .room-head h1 {
-    font-size: clamp(1.85rem, 9vw, 2.55rem);
   }
 
   .dropzone {
