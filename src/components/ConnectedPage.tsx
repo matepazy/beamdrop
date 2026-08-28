@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Clipboard, Download, FileText, LogOut, MapPin, Plus, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { Activity, ChevronDown, Clipboard, Download, FileText, LockKeyhole, LogOut, MapPin, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
 import { formatBytes, hostnameFor, isUrl } from '../lib/format'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
+import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
 
 export function ConnectedPage({
@@ -29,6 +30,9 @@ export function ConnectedPage({
 
   const [qrOpen, setQrOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [metricsOpen, setMetricsOpen] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<RtcDiagnostics[]>([])
+  const [diagnosticsUpdatedAt, setDiagnosticsUpdatedAt] = useState<number | null>(null)
   const [passwordDraft, setPasswordDraft] = useState('')
   const [copied, setCopied] = useState(false)
   const [composer, setComposer] = useState('')
@@ -64,6 +68,25 @@ export function ConnectedPage({
       resizeComposer(composerInput.current)
     }
   }, [composer])
+
+  useEffect(() => {
+    if (!metricsOpen) return
+
+    let active = true
+    const refresh = async () => {
+      const next = await beam.getDiagnostics()
+      if (!active) return
+      setDiagnostics(next)
+      setDiagnosticsUpdatedAt(Date.now())
+    }
+
+    void refresh()
+    const interval = window.setInterval(() => void refresh(), 2_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [metricsOpen])
 
   const recipient =
     beam.peers[0]?.name ?? 'your other device'
@@ -273,6 +296,10 @@ export function ConnectedPage({
           </label>
         </div>
 
+        <button className="metrics-button" type="button" onClick={() => setMetricsOpen(true)} aria-label="Open technical metrics" title="Technical metrics">
+          <Activity size={18} />
+        </button>
+
         <button
           className="settings-button"
           type="button"
@@ -404,6 +431,17 @@ export function ConnectedPage({
       )}
 
       <AnimatePresence>
+        {metricsOpen && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setMetricsOpen(false)}>
+            <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="metrics-dialog__head"><div><Activity size={19} /><div><h2 id="beam-metrics-title">Technical metrics</h2></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close technical metrics"><X size={18} /></button></div>
+              <div className="metrics-dialog__privacy"><LockKeyhole size={15} /> Candidate addresses are never shown.</div>
+              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers[index]?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
+              <section className="metrics-transfers"><h3>Transfer telemetry</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No file transfers in this Beam yet.</p>}</section>
+              <p className="metrics-dialog__updated"><RefreshCw size={13} /> Updates every 2 seconds{diagnosticsUpdatedAt ? ` · checked ${new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(diagnosticsUpdatedAt)}` : ''}</p>
+            </motion.section>
+          </motion.div>
+        )}
         {settingsOpen && (
           <motion.div
             className="dialog-backdrop"
@@ -456,6 +494,19 @@ export function ConnectedPage({
     </motion.section>
   )
 }
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div><dt>{label}</dt><dd>{value}</dd></div>
+}
+
+function TransferMetric({ transfer }: { transfer: TransferRecord }) {
+  return <article className="transfer-metric"><div><strong>{transfer.name}</strong><span>{transfer.direction === 'sending' ? 'Sending' : 'Receiving'} · {transfer.status}</span></div><dl><Metric label="Size" value={formatBytes(transfer.size)} /><Metric label="Progress" value={`${Math.round(transfer.progress * 100)}%`} /><Metric label="Current speed" value={`${formatBytes(transfer.speed)}/s`} /><Metric label="Average speed" value={transfer.averageSpeed === undefined ? '—' : `${formatBytes(transfer.averageSpeed)}/s`} /><Metric label="Peak speed" value={transfer.peakSpeed === undefined ? '—' : `${formatBytes(transfer.peakSpeed)}/s`} /><Metric label="Elapsed" value={transfer.elapsedMs === undefined ? '—' : formatMilliseconds(transfer.elapsedMs)} /></dl></article>
+}
+
+function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
+function formatMilliseconds(value: number | null) { return value === null ? 'Unavailable' : `${Math.round(value)} ms` }
+function formatBitrate(value: number | null) { if (value === null) return 'Unavailable'; if (value < 1_000) return `${Math.round(value)} bit/s`; if (value < 1_000_000) return `${(value / 1_000).toFixed(1)} kbit/s`; return `${(value / 1_000_000).toFixed(1)} Mbit/s` }
+function formatBytesOrUnavailable(value: number | null) { return value === null ? 'Unavailable' : formatBytes(value) }
 
 function MapPinPicker({
   pin,
