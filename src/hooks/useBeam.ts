@@ -397,11 +397,14 @@ export function useBeam(
         if (stopped) return
 
         keyRef.current = key
+        // Every member that can decrypt Beam control messages already has the
+        // room password. Keep the locally derived proof from the start so a
+        // new join request is not dropped while room settings are still in
+        // transit. Previously only the creator set this value; an existing
+        // guest could receive a third member's request before its access
+        // status arrived and compare it against the initial empty string.
+        passwordProofRef.current = initialProof
         joinedRef.current = isCreator
-
-        if (isCreator) {
-          passwordProofRef.current = initialProof
-        }
 
         room = joinRoom(
           {

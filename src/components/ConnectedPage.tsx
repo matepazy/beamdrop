@@ -55,7 +55,10 @@ export function ConnectedPage({
   const attachmentActionsRef = useRef<HTMLDivElement>(null)
   const conversationRef = useRef<HTMLElement>(null)
   const connected = beam.state === 'connected'
-  const activityCount = beam.feed.length + beam.transfers.length
+  const activityCount =
+    beam.feed.length +
+    beam.transfers.length +
+    beam.pendingPeers.length
 
   useLayoutEffect(() => {
     if (connected && conversationRef.current) {
@@ -353,21 +356,40 @@ export function ConnectedPage({
           <UserRound size={16} />
           <strong>People in this Beam</strong>
           <span>{beam.peers.length + 1}</span>
+          {beam.pendingPeers.length > 0 && (
+            <span className="join-request-count" role="status">
+              {beam.pendingPeers.length} join {beam.pendingPeers.length === 1 ? 'request' : 'requests'}
+            </span>
+          )}
           <ChevronDown className="participants__chevron" size={17} aria-hidden="true" />
         </summary>
         <div className="participants__list">
           <span className="participant"><i /> You</span>
           {beam.peers.map((peer) => <span className="participant" key={peer.id}><i /> {peer.name}<button type="button" onClick={() => beam.kickPeer(peer.id)} aria-label={`Remove ${peer.name}`}><UserRoundX size={15} /> Remove</button></span>)}
         </div>
-        {beam.pendingPeers.length > 0 && <div className="join-requests"><strong>Join requests</strong>{beam.pendingPeers.map((peer) => <div key={peer.id}><span>{peer.name} wants to join</span><button className="primary small" type="button" onClick={() => beam.admitPeer(peer.id)}>Allow</button></div>)}</div>}
       </details>
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
-        {hasActivity ? (
+        {hasActivity || beam.pendingPeers.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
             ) : <FeedCard key={entry.item.id} item={entry.item} />)}
+            {beam.pendingPeers.length > 0 && (
+              <div className="join-request-feed" role="status">
+                {beam.pendingPeers.map((peer) => (
+                  <div className="join-request-card" key={peer.id}>
+                    <div>
+                      <strong>Join request</strong>
+                      <span>{peer.name} wants to join this Beam.</span>
+                    </div>
+                    <button className="primary small" type="button" onClick={() => beam.admitPeer(peer.id)}>
+                      Allow
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="conversation-empty">
