@@ -1,37 +1,33 @@
-const textEncoder = new TextEncoder()
-const textDecoder = new TextDecoder()
-const IV_LENGTH = 12
+const encoder = new TextEncoder()
 
-/** Derives a session-only key. The password is never sent to signaling relays or peers. */
-export async function encryptionKeyFor(secret: string, password = ''): Promise<CryptoKey> {
-  const material = await crypto.subtle.importKey('raw', textEncoder.encode(`${secret}\u0000${password}`), 'PBKDF2', false, ['deriveKey'])
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: textEncoder.encode('beamdrop-message-encryption-v1'), iterations: 210_000, hash: 'SHA-256' }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+export type RoomMaterial = { roomId: string; signalingKey: string; appKey: CryptoKey }
+
+function base64Url(bytes: Uint8Array) {
+  let binary = ''
+  bytes.forEach(byte => { binary += String.fromCharCode(byte) })
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-/** A non-reversible proof used to check a join password without sending it. */
-export async function passwordProofFor(secret: string, password: string): Promise<string> {
-  const bytes = textEncoder.encode(`${secret}\u0000${password}`)
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  return Array.from(hash, byte => byte.toString(16).padStart(2, '0')).join('')
+export function randomCapability(bytes = 18) { return base64Url(crypto.getRandomValues(new Uint8Array(bytes))) }
+
+export async function deriveRoomMaterial(capability: string): Promise<RoomMaterial> {
+  const material = await crypto.subtle.importKey('raw', encoder.encode(capability), 'HKDF', false, ['deriveBits', 'deriveKey'])
+  const deriveBits = async (info: string) => new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: encoder.encode('beamdrop/v2'), info: encoder.encode(info) }, material, 256))
+  const [roomIdBytes, signalingBytes, appKey] = await Promise.all([
+    deriveBits('beam-room-id'), deriveBits('beam-signaling-key'),
+    crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: encoder.encode('beamdrop/v2'), info: encoder.encode('beam-app-key') }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']),
+  ])
+  return { roomId: base64Url(roomIdBytes), signalingKey: base64Url(signalingBytes), appKey }
 }
 
-export async function encryptBytes(key: CryptoKey, bytes: Uint8Array): Promise<Uint8Array> {
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH))
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes))
-  const result = new Uint8Array(iv.length + encrypted.length)
-  result.set(iv); result.set(encrypted, iv.length)
-  return result
+export async function passwordResponse(capability: string, password: string, nonce: Uint8Array): Promise<string> {
+  const material = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey'])
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: encoder.encode(`beam-password/v2/${capability}`), iterations: 310_000, hash: 'SHA-256' }, material, { name: 'HMAC', hash: 'SHA-256', length: 256 }, false, ['sign'])
+  return base64Url(new Uint8Array(await crypto.subtle.sign('HMAC', key, nonce)))
 }
 
-export async function decryptBytes(key: CryptoKey, value: unknown): Promise<Uint8Array | null> {
-  const bytes = value instanceof Uint8Array ? value : value instanceof ArrayBuffer ? new Uint8Array(value) : null
-  if (!bytes || bytes.length <= IV_LENGTH) return null
-  try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, IV_LENGTH) }, key, bytes.subarray(IV_LENGTH))) } catch { return null }
-}
+export function timingSafeEqual(a: string, b: string) { if (a.length !== b.length) return false; let result = 0; for (let index = 0; index < a.length; index += 1) result |= a.charCodeAt(index) ^ b.charCodeAt(index); return result === 0 }
 
-export async function encryptMessage(key: CryptoKey, value: unknown) { return encryptBytes(key, textEncoder.encode(JSON.stringify(value))) }
-export async function decryptMessage(key: CryptoKey, value: unknown) {
-  const bytes = await decryptBytes(key, value)
-  if (!bytes) return null
-  try { return JSON.parse(textDecoder.decode(bytes)) as unknown } catch { return null }
-}
+/** WebRTC DataChannels already authenticate and encrypt payload transport. The
+ * capability-derived signaling key gates rendezvous/Trystero actions; appKey is
+ * intentionally reserved for a future defined end-to-end feature, not password-based encryption. */

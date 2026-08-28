@@ -1,59 +1,44 @@
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
-const ADJECTIVES = ['amber', 'brisk', 'calm', 'clever', 'crisp', 'dapper', 'gentle', 'lunar', 'mellow', 'nimble', 'quiet', 'rapid', 'silver', 'sunny', 'velvet', 'wild']
-const NOUNS = ['badger', 'beacon', 'cedar', 'comet', 'falcon', 'harbor', 'mango', 'maple', 'otter', 'panda', 'river', 'saffron', 'sparrow', 'summit', 'tiger', 'willow']
+const ADJECTIVES = [
+  'amber', 'ancient', 'ardent', 'azure', 'brave', 'brisk', 'calm', 'candid', 'cedar', 'clever', 'coral', 'cosmic', 'crisp', 'dapper', 'dawn', 'deep',
+  'eager', 'ember', 'fair', 'fierce', 'fluent', 'forest', 'gentle', 'golden', 'grand', 'happy', 'hidden', 'hollow', 'humble', 'ivory', 'jolly', 'keen',
+  'lively', 'lunar', 'mellow', 'merry', 'misty', 'modern', 'nimble', 'noble', 'ocean', 'opal', 'patient', 'pearl', 'plucky', 'proud', 'quiet', 'rapid',
+  'ready', 'river', 'royal', 'rustic', 'sable', 'sacred', 'sandy', 'sharp', 'silver', 'solar', 'steady', 'sunny', 'swift', 'tidy', 'velvet', 'vivid',
+  'warm', 'wild', 'wise', 'witty', 'young', 'zephyr', 'bright', 'cobalt', 'daring', 'elated', 'fabled', 'glowing', 'honest', 'kindred', 'lucky', 'mighty',
+]
+const NOUNS = [
+  'acorn', 'badger', 'beacon', 'bison', 'cedar', 'comet', 'coral', 'coyote', 'cricket', 'falcon', 'fern', 'firefly', 'fox', 'harbor', 'heron', 'island',
+  'jaguar', 'juniper', 'kingfisher', 'lantern', 'lark', 'maple', 'mango', 'meadow', 'meteor', 'narwhal', 'oak', 'oasis', 'otter', 'panda', 'parrot', 'pebble',
+  'pine', 'quartz', 'rabbit', 'raven', 'reef', 'river', 'robin', 'saffron', 'sailor', 'sparrow', 'summit', 'tiger', 'valley', 'willow', 'wolf', 'wren',
+  'yarrow', 'zebra', 'albatross', 'aster', 'bamboo', 'brook', 'canyon', 'dolphin', 'elm', 'ember', 'finch', 'glacier', 'horizon', 'iris', 'kestrel', 'lagoon',
+  'lynx', 'marigold', 'moonstone', 'nectar', 'orion', 'poppy', 'redwood', 'sequoia', 'thistle', 'violet', 'watershed', 'zenith', 'aurora', 'clover', 'driftwood', 'hummingbird',
+]
 
 function randomIndex(length: number) {
-  const max = 256 - (256 % length)
-  const byte = new Uint8Array(1)
-  do crypto.getRandomValues(byte); while (byte[0] >= max)
-  return byte[0] % length
+  const ceiling = 65536 - (65536 % length)
+  const value = new Uint16Array(1)
+  do crypto.getRandomValues(value); while (value[0] >= ceiling)
+  return value[0] % length
 }
 
-export function generateCode() {
-  const chars = Array.from({ length: 8 }, () => ALPHABET[randomIndex(ALPHABET.length)]).join('')
-  return `${chars.slice(0, 4)}-${chars.slice(4)}`
-}
-
+/** A human-readable Beam join code with substantially broader word vocabulary. */
 export function generatePassphrase() {
   return `${ADJECTIVES[randomIndex(ADJECTIVES.length)]}-${NOUNS[randomIndex(NOUNS.length)]}-${String(randomIndex(100)).padStart(2, '0')}`
 }
+export const generateCode = generatePassphrase
 
 export function normalizeSecret(value: string) {
-  const trimmed = value.trim().toLowerCase().replace(/\s+/g, ' ')
-  const compact = trimmed.replace(/[\s-]/g, '')
-  if (/^[abcdefghjkmnpqrstuvwxyz23456789]{8}$/.test(compact)) return `${compact.slice(0, 4)}-${compact.slice(4)}`.toUpperCase()
-  return trimmed
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, '-').replace(/-+/g, '-')
+  return normalized.replace(/^(.*)-(\d)$/, '$1-0$2')
 }
 
 export function secretFromJoinInput(value: string) {
   const input = value.trim()
-
-  try {
-    const url = new URL(input)
-    const match = url.hash.match(/^#\/join\/(.+)$/)
-
-    if (match) {
-      try {
-        return decodeURIComponent(match[1])
-      } catch {
-        return input
-      }
-    }
-  } catch {
-    // A short Beam code is not a URL, so use the input unchanged.
-  }
-
-  return input
+  try { const url = new URL(input); const match = url.hash.match(/^#\/join\/([^/]+)$/); return match ? decodeURIComponent(match[1]) : input } catch { return input }
 }
 
 export function isValidSecret(value: string) {
-  if (/[\u0000-\u001f]/.test(value)) return false
-  const normalized = normalizeSecret(value)
-  return normalized.length >= 3 && normalized.length <= 96
+  const [adjective, noun, number, ...extra] = normalizeSecret(value).split('-')
+  return extra.length === 0 && ADJECTIVES.includes(adjective) && NOUNS.includes(noun) && /^\d{2}$/.test(number ?? '')
 }
 
-export async function roomIdFor(secret: string) {
-  const bytes = new TextEncoder().encode(`beam-room-v1:${normalizeSecret(secret)}`)
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
-}
+export async function roomIdFor(secret: string) { const { roomId } = await import('./crypto').then(({ deriveRoomMaterial }) => deriveRoomMaterial(secret)); return roomId }

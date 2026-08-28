@@ -138,7 +138,10 @@ export function App() {
           <InfoPage key={view.page} page={view.page} />
         ) : (
           <ConnectedPage
-            key={view.secret}
+            // A password submission must create a fresh Trystero handshake.
+            // Keeping only the room code as the key left the rejected room
+            // mounted and made the password form appear to do nothing.
+            key={`${view.secret}:${view.password}`}
             secret={view.secret}
             password={view.password}
             isCreator={view.isCreator}

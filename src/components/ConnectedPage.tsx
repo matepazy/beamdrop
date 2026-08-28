@@ -9,6 +9,8 @@ import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
 
+const PASSWORD_FEATURE_ENABLED = false
+
 export function ConnectedPage({
   secret,
   password,
@@ -512,7 +514,7 @@ export function ConnectedPage({
 
               {isCreator ? (
                 <>
-                  <form className="settings-dialog__section" onSubmit={(event) => {
+                  {PASSWORD_FEATURE_ENABLED && <form className="settings-dialog__section" onSubmit={(event) => {
                     event.preventDefault()
                     onPasswordChange(passwordDraft)
                     setSettingsOpen(false)
@@ -520,7 +522,9 @@ export function ConnectedPage({
                     <div><strong>Password</strong><p>Changes apply to new joiners only. People already connected stay in this Beam.</p></div>
                     <label htmlFor="settings-password">New password <span>(leave blank to remove)</span></label>
                     <div className="settings-dialog__password"><input id="settings-password" type="password" autoComplete="new-password" value={passwordDraft} onChange={(event) => setPasswordDraft(event.target.value)} placeholder="No password" /><button className="primary" type="submit">Save</button></div>
-                  </form>
+                  </form>}
+
+                  {!PASSWORD_FEATURE_ENABLED && <p className="settings-dialog__note">Password protection is temporarily unavailable for this Beam.</p>}
 
                   <div className="settings-dialog__section settings-dialog__toggle">
                     <div><strong>Free for ALL</strong><p>Anyone with the Beam code can join instantly. No approval is needed after the first member joins.</p></div>
