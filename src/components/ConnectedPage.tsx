@@ -115,8 +115,12 @@ export function ConnectedPage({
     }
   }, [metricsOpen])
 
-  const recipient =
-    beam.peers[0]?.name ?? 'your other device'
+  const [onlyPeer] = beam.peers
+  const recipient = beam.peers.length === 1
+    ? onlyPeer?.name ?? 'this Beam'
+    : beam.peers.length > 1
+      ? `${beam.peers.length} people in this Beam`
+      : 'this Beam'
 
   const copy = async (value: string) => {
     await navigator.clipboard.writeText(value)
@@ -482,7 +486,7 @@ export function ConnectedPage({
             <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="metrics-dialog__head"><div><Activity size={19} /><div><h2 id="beam-metrics-title">Technical metrics</h2></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close technical metrics"><X size={18} /></button></div>
               <div className="metrics-dialog__privacy"><LockKeyhole size={15} /> Candidate addresses are never shown.</div>
-              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers[index]?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
+              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers.find(peer => peer.id === diagnostic.peerId)?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
               <section className="metrics-transfers"><h3>Transfer telemetry</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No file transfers in this Beam yet.</p>}</section>
               <p className="metrics-dialog__updated"><RefreshCw size={13} /> Updates every 2 seconds{diagnosticsUpdatedAt ? ` · checked ${new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(diagnosticsUpdatedAt)}` : ''}</p>
             </motion.section>

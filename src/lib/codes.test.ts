@@ -3,6 +3,7 @@ import { deriveRoomMaterial } from './crypto'
 import { generateCode, isValidSecret, secretFromJoinInput } from './codes'
 import { formatBytes, isUrl } from './format'
 import { CHUNK_SIZE, decodeChunk, encodeChunk, parseMessage, totalChunksFor } from './protocol'
+import { areAllRecipientsTerminal, isRecipientTerminal, type OutgoingTransfer, type RecipientTransferState } from './transfer'
 
 describe('Beam capability and protocol boundaries', () => {
   it('generates a readable word-word-number join code', () => { const capability = generateCode(); expect(capability).toMatch(/^[a-z]+-[a-z]+-\d{2}$/); expect(isValidSecret(capability)).toBe(true) })
@@ -13,4 +14,18 @@ describe('Beam capability and protocol boundaries', () => {
   it('strictly validates control messages', () => { expect(parseMessage({ v: 2, type: 'hello', name: 'Phone', deviceType: 'phone' })).not.toBeNull(); expect(parseMessage({ type: 'hello', name: 'Phone', deviceType: 'phone' })).toBeNull(); expect(parseMessage({ v: 2, type: 'item', item: { id: 'x'.repeat(129), kind: 'text', value: 'x', createdAt: 1 } })).toBeNull() })
   it('uses a length-checked binary chunk frame', () => { const body = new Uint8Array([1, 2, 3]); const frame = encodeChunk('transfer_1', 4, body); expect(decodeChunk(frame)).toMatchObject({ transferId: 'transfer_1', index: 4, payload: body }); frame[10] = 0xff; expect(decodeChunk(frame)).toBeNull() })
   it('calculates chunks from the bounded payload size', () => expect(totalChunksFor(CHUNK_SIZE + 1)).toBe(2))
+  it('does not release an outgoing file until every recipient is terminal', () => {
+    const transfer = {
+      id: 'transfer_1',
+      file: {} as File,
+      recipients: new Map<string, RecipientTransferState>([
+        ['alice', { peerId: 'alice', status: 'completed', bytesSent: 12 }],
+        ['bob', { peerId: 'bob', status: 'transferring', bytesSent: 4 }],
+      ]),
+    } satisfies OutgoingTransfer
+    expect(areAllRecipientsTerminal(transfer)).toBe(false)
+    transfer.recipients.get('bob')!.status = 'cancelled'
+    expect(isRecipientTerminal('cancelled')).toBe(true)
+    expect(areAllRecipientsTerminal(transfer)).toBe(true)
+  })
 })
