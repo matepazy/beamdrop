@@ -52,6 +52,7 @@ export function ConnectedPage({
 
   const fileInput = useRef<HTMLInputElement>(null)
   const composerInput = useRef<HTMLTextAreaElement>(null)
+  const attachmentActionsRef = useRef<HTMLDivElement>(null)
   const conversationRef = useRef<HTMLElement>(null)
   const connected = beam.state === 'connected'
   const activityCount = beam.feed.length + beam.transfers.length
@@ -68,6 +69,27 @@ export function ConnectedPage({
       resizeComposer(composerInput.current)
     }
   }, [composer])
+
+  useEffect(() => {
+    if (!attachmentsOpen) return
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!attachmentActionsRef.current?.contains(event.target as Node)) {
+        setAttachmentsOpen(false)
+      }
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAttachmentsOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [attachmentsOpen])
 
   useEffect(() => {
     if (!metricsOpen) return
@@ -388,8 +410,8 @@ export function ConnectedPage({
           </div>
         ) : (
           <div className="chat-composer__text-row">
-            <div className="attachment-actions">
-              <button className="attachment-action" type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label="More sharing options" aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
+            <div className="attachment-actions" ref={attachmentActionsRef}>
+              <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
               {attachmentsOpen && <div className="attachment-menu" role="menu">
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
@@ -486,6 +508,7 @@ export function ConnectedPage({
               ) : (
                 <p className="settings-dialog__note">Only the person who started this Beam can change its password or joining mode.</p>
               )}
+              <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); setMetricsOpen(true) }}><Activity size={17} /> Technical metrics</button>
             </motion.section>
           </motion.div>
         )}

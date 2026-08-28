@@ -112,7 +112,7 @@
 
   border: 1px solid
     rgba(17, 17, 15, 0.15);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   color: var(--beam-ink);
   background: var(--beam-paper);
@@ -305,7 +305,7 @@
   gap: 14px;
 
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
 
   color: #fff;
   background: var(--beam-ink);
@@ -337,7 +337,7 @@
   display: grid;
   place-items: center;
 
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
 
   color: var(--beam-ink);
   background: #fff;
@@ -388,7 +388,7 @@
   padding: 5px;
 
   border: 1px solid rgba(17, 17, 15, 0.22);
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.34);
 
@@ -434,7 +434,7 @@
   gap: 7px;
 
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
 
   color: #fff;
   background: var(--beam-ink);
@@ -502,7 +502,7 @@
   overflow: hidden;
 
   border: 1px solid rgba(17, 17, 15, 0.9);
-  border-radius: 18px;
+  border-radius: var(--radius-ui);
 
   color: #fff;
   background: var(--beam-dark);
@@ -732,7 +732,7 @@
   place-items: center;
 
   border: 1px solid rgba(17, 17, 15, 0.15);
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.35);
 }
@@ -1259,7 +1259,7 @@
   justify-content: space-between;
 
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
 
   color: #fff;
   background: var(--beam-accent);
@@ -1631,7 +1631,7 @@
   }
 
   .beam-preview {
-    border-radius: 13px;
+    border-radius: var(--radius-ui);
 
     box-shadow:
       8px 10px 0

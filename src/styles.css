@@ -13,6 +13,7 @@
   background: #f5f4f1;
   --shadow-dialog: 0 18px 48px rgba(15, 23, 42, 0.18);
   --shadow-toggle-knob: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --radius-ui: 12px;
   font-synthesis: none;
 }
 
@@ -282,7 +283,7 @@ a:focus-visible {
 
 .session-shell .privacy-note {
   border: 1px solid rgba(25, 25, 25, 0.08);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   padding: 10px 15px;
 
@@ -295,7 +296,7 @@ a:focus-visible {
   margin: 0 auto 20px;
   padding: 12px 16px;
 
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
 
   background: #fff0dc;
   color: #7d3e00;
@@ -602,7 +603,7 @@ a:focus-visible {
   gap: 8px;
 
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: #151515;
   color: white;
@@ -660,7 +661,7 @@ a:focus-visible {
   flex: 1;
 
   border: 1px solid rgba(24, 24, 22, 0.14);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.82);
   color: #172033;
@@ -691,7 +692,7 @@ a:focus-visible {
 .join-button {
   min-width: 72px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   padding: 0 16px;
 
@@ -1169,7 +1170,7 @@ a:focus-visible {
 .beam-card {
   padding: clamp(28px, 5vw, 42px);
 
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
 
   background: #151515;
   color: #f7f6f2;
@@ -1246,7 +1247,7 @@ a:focus-visible {
   padding: 10px 12px;
 
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 9px;
+  border-radius: var(--radius-ui);
 
   outline: none;
 
@@ -1359,7 +1360,7 @@ a:focus-visible {
   padding: 9px 14px;
 
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.1);
   color: #f7f6f2;
@@ -1476,7 +1477,7 @@ a:focus-visible {
   padding: 10px 14px;
 
   border: 1px solid rgba(25, 25, 25, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.7);
   color: #353532;
@@ -1537,7 +1538,7 @@ a:focus-visible {
   margin-top: 40px;
 
   border: 1.5px dashed rgba(21, 21, 21, 0.28);
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
 
   display: flex;
   flex-direction: column;
@@ -1639,7 +1640,7 @@ a:focus-visible {
   padding: 10px 12px;
 
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: transparent;
   color: #4c4c48;
@@ -1680,7 +1681,7 @@ a:focus-visible {
 
   resize: vertical;
 
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
 
   background: rgba(255, 255, 255, 0.78);
 }
@@ -1731,7 +1732,7 @@ a:focus-visible {
 
   flex: none;
 
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
 
   background: #e8eaff;
   color: #455ef5;
@@ -1782,7 +1783,7 @@ a:focus-visible {
 
   overflow: hidden;
 
-  border-radius: 99px;
+  border-radius: var(--radius-ui);
 
   background: #deded9;
 }
@@ -1883,7 +1884,7 @@ a:focus-visible {
   margin: 0;
   padding: 35px;
 
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
 
   background: white;
 
@@ -2195,9 +2196,9 @@ a:focus-visible {
 }
 
 /* Live connection telemetry */
-.metrics-button { margin-left: auto; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(21, 21, 21, .13); border-radius: 10px; background: rgba(255, 255, 255, .58); color: #555552; }
+.metrics-button { margin-left: auto; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(21, 21, 21, .13); border-radius: var(--radius-ui); background: rgba(255, 255, 255, .58); color: #555552; }
 .metrics-button:hover, .metrics-button:focus-visible { background: #fff; color: #455ef5; }
-.metrics-dialog { width: min(560px, calc(100vw - 40px)); max-height: min(76dvh, 680px); overflow-y: auto; padding: 22px; border-radius: 14px; background: #fcfcfa; box-shadow: 0 16px 40px rgba(27, 27, 24, .14); }
+.metrics-dialog { width: min(560px, calc(100vw - 40px)); max-height: min(76dvh, 680px); overflow-y: auto; padding: 22px; border-radius: var(--radius-ui); background: #fcfcfa; box-shadow: 0 16px 40px rgba(27, 27, 24, .14); }
 .metrics-dialog__head, .metrics-dialog__head > div, .metrics-dialog__privacy, .metrics-dialog__updated { display: flex; align-items: center; }
 .metrics-dialog__head { justify-content: space-between; gap: 16px; }
 .metrics-dialog__head > div { gap: 8px; }
@@ -2220,8 +2221,8 @@ a:focus-visible {
 .metrics-dialog__updated { justify-content: center; gap: 5px; margin: 0; color: #85857f; font-size: 11px; }
 
 @media (max-width: 620px) {
-  .metrics-button { width: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
-  .metrics-dialog { width: 100%; max-height: min(78dvh, 650px); padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: 22px 22px 16px 16px; }
+  .metrics-button { width: 44px; min-width: 44px; min-height: 44px; border-radius: var(--radius-ui); }
+  .metrics-dialog { width: 100%; max-height: min(78dvh, 650px); padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: var(--radius-ui); }
   .metrics-peer dl, .transfer-metric dl { gap: 12px; }
 }
 
@@ -2267,7 +2268,7 @@ a:focus-visible {
   display: block;
   margin-top: 9px;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
   background: #e8e8e3;
 }
 
@@ -2281,7 +2282,7 @@ a:focus-visible {
   right: 8px;
   bottom: 8px;
   padding: 4px 7px;
-  border-radius: 7px;
+  border-radius: var(--radius-ui);
   background: rgba(255, 255, 255, 0.92);
   color: #151515 !important;
   font-size: 11px !important;
@@ -2337,7 +2338,7 @@ a:focus-visible {
 }
 
 .conversation::-webkit-scrollbar-thumb {
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: rgba(21, 21, 21, 0.28);
 }
 
@@ -2383,7 +2384,7 @@ a:focus-visible {
   margin: 0;
   padding: 13px 15px;
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-ui);
   background: #fff;
 }
 
@@ -2419,7 +2420,7 @@ a:focus-visible {
   flex: none;
   padding: 13px;
   border: 1px solid rgba(21, 21, 21, 0.18);
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
   background: #fff;
 }
 
@@ -2466,7 +2467,7 @@ a:focus-visible {
   gap: 6px;
   padding: 7px 9px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-ui);
   background: transparent;
   color: #555552;
   font-size: 12px;
@@ -2486,7 +2487,7 @@ a:focus-visible {
   gap: 7px;
   padding: 8px 13px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
   background: #455ef5;
   color: #fff;
   font-size: 13px;
@@ -2505,7 +2506,7 @@ a:focus-visible {
 .location-draft {
   margin-bottom: 10px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
   background: #f5f4f1;
 }
 
@@ -2574,7 +2575,7 @@ a:focus-visible {
 
   .chat-composer {
     padding: 10px;
-    border-radius: 14px;
+    border-radius: var(--radius-ui);
   }
 
   .chat-composer > textarea {
@@ -2706,7 +2707,7 @@ a:focus-visible {
 }
 
 .room-grid::-webkit-scrollbar-thumb {
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: rgba(21, 21, 21, 0.25);
 }
@@ -2870,7 +2871,7 @@ a:focus-visible {
   display: grid;
   place-items: center;
   border: 1px solid rgba(21, 21, 21, .13);
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
   background: rgba(255, 255, 255, .58);
   color: #555552;
 }
@@ -2884,7 +2885,7 @@ a:focus-visible {
 .settings-dialog {
   width: min(480px, calc(100vw - 40px));
   padding: 24px;
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
   background: #fff;
   box-shadow: var(--shadow-dialog);
 }
@@ -2908,7 +2909,7 @@ a:focus-visible {
 .settings-dialog__section label { display: block; margin-top: 15px; color: #555552; font-size: 12px; font-weight: 700; }
 .settings-dialog__section label span { color: #777773; font-weight: 500; }
 .settings-dialog__password { gap: 8px; margin-top: 7px; }
-.settings-dialog__password input { min-width: 0; flex: 1; padding: 10px 11px; border: 1px solid rgba(21, 21, 21, .18); border-radius: 9px; }
+.settings-dialog__password input { min-width: 0; flex: 1; padding: 10px 11px; border: 1px solid rgba(21, 21, 21, .18); border-radius: var(--radius-ui); }
 .settings-dialog__password .primary { min-height: 40px; }
 .settings-dialog__toggle { justify-content: space-between; gap: 22px; }
 .toggle { width: 44px; height: 26px; flex: none; padding: 3px; border: 0; border-radius: 999px; background: #c9c9c3; transition: background .16s ease; }
@@ -2916,12 +2917,13 @@ a:focus-visible {
 .toggle.on { background: #455ef5; }
 .toggle.on span { transform: translateX(18px); }
 .settings-dialog__note { margin-top: 22px; }
+.settings-dialog__metrics { display: none; }
 
 .participants {
   margin: 22px 0 4px;
   padding: 13px 15px;
   border: 1px solid rgba(21, 21, 21, .12);
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
   background: rgba(255, 255, 255, .58);
 }
 
@@ -2940,7 +2942,7 @@ a:focus-visible {
 .participants__title span { margin-left: auto; color: #686863; }
 .participants__chevron { display: none; }
 .participants__list { flex-wrap: wrap; margin-top: 10px; }
-.participant { padding: 5px 8px; border-radius: 999px; background: #f0f0ed; font-size: 12px; }
+.participant { padding: 5px 8px; border-radius: var(--radius-ui); background: #f0f0ed; font-size: 12px; }
 .participant > i { width: 7px; height: 7px; border-radius: 50%; background: #46a36b; }
 .participant button { border: 0; padding: 0; background: transparent; color: #8a403b; font: inherit; display: inline-flex; align-items: center; gap: 3px; }
 .join-requests { margin-top: 12px; padding-top: 11px; border-top: 1px solid rgba(21, 21, 21, .1); font-size: 12px; }
@@ -2958,7 +2960,7 @@ a:focus-visible {
   margin-top: 34px;
 
   border: 1px dashed rgba(21, 21, 21, 0.28);
-  border-radius: 14px;
+  border-radius: var(--radius-ui);
 
   background: transparent;
 }
@@ -3044,7 +3046,7 @@ a:focus-visible {
   padding: 20px;
 
   border: 1px solid rgba(21, 21, 21, 0.18);
-  border-radius: 14px;
+  border-radius: var(--radius-ui);
 
   background: #fff;
 
@@ -3079,7 +3081,7 @@ a:focus-visible {
   place-items: center;
 
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 
   background: transparent;
   color: #555552;
@@ -3098,7 +3100,7 @@ a:focus-visible {
 
   resize: none;
 
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
 
   background: #fff;
 }
@@ -3116,7 +3118,7 @@ a:focus-visible {
 
   overflow: hidden;
 
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
 
   background: #ecebe7;
 }
@@ -3199,7 +3201,7 @@ a:focus-visible {
   .participants__title:focus-visible {
     outline: 2px solid #455ef5;
     outline-offset: 3px;
-    border-radius: 8px;
+    border-radius: var(--radius-ui);
   }
 
   .participants__chevron {
@@ -3251,7 +3253,7 @@ a:focus-visible {
 
   .chat-composer {
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    border-radius: 16px;
+    border-radius: var(--radius-ui);
   }
 
   .chat-composer > textarea {
@@ -3279,7 +3281,7 @@ a:focus-visible {
   .send-message {
     width: 46px;
     min-height: 44px;
-    border-radius: 12px;
+    border-radius: var(--radius-ui);
   }
 
   .dropzone {
@@ -3407,7 +3409,7 @@ a:focus-visible {
     align-items: center;
     justify-content: center;
     padding: 0;
-    border-radius: 12px;
+    border-radius: var(--radius-ui);
     line-height: 0;
   }
 
@@ -3429,7 +3431,7 @@ a:focus-visible {
   .participants {
     margin: 2px 0 0;
     padding: 0 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-ui);
   }
 
   .participants__title {
@@ -3455,7 +3457,7 @@ a:focus-visible {
   .conversation .transfer-card {
     width: 90%;
     max-width: 440px;
-    border-radius: 16px;
+    border-radius: var(--radius-ui);
   }
 
   .chat-composer {
@@ -3463,7 +3465,7 @@ a:focus-visible {
     z-index: 2;
     margin: 0;
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
-    border-radius: 18px;
+    border-radius: var(--radius-ui);
   }
 
   .chat-composer > textarea {
@@ -3482,7 +3484,7 @@ a:focus-visible {
     min-width: 52px;
     min-height: 46px;
     flex: 1;
-    border-radius: 11px;
+    border-radius: var(--radius-ui);
     color: #454541;
   }
 
@@ -3494,7 +3496,7 @@ a:focus-visible {
     width: 48px;
     min-width: 48px;
     min-height: 46px;
-    border-radius: 14px;
+    border-radius: var(--radius-ui);
   }
 
   .share-status {
@@ -3513,7 +3515,7 @@ a:focus-visible {
     max-height: min(78dvh, 650px);
     overflow-y: auto;
     padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
-    border-radius: 22px 22px 16px 16px;
+    border-radius: var(--radius-ui);
   }
 
   .settings-dialog__head > button,
@@ -3544,7 +3546,7 @@ a:focus-visible {
     content: "";
     position: absolute;
     inset: 6px 0;
-    border-radius: 999px;
+    border-radius: var(--radius-ui);
     background: #c9c9c3;
     transition: background .16s ease;
   }
@@ -3583,7 +3585,7 @@ a:focus-visible {
   .waiting .beam-card {
     width: 100%;
     padding: 28px 20px 22px;
-    border-radius: 20px;
+    border-radius: var(--radius-ui);
   }
 
   .waiting h1 {
@@ -3637,7 +3639,7 @@ a:focus-visible {
 .conversation .feed-item,
 .conversation .transfer-card { padding: 11px 13px; }
 .feed-item--text strong { overflow-wrap: anywhere; white-space: normal; }
-.chat-composer { padding: 8px 10px; border-radius: 14px; }
+.chat-composer { padding: 8px 10px; border-radius: var(--radius-ui); }
 .chat-composer > textarea { min-height: 40px; max-height: 20svh; padding: 3px 2px 7px; line-height: 1.4; }
 .chat-composer__bottom { gap: 8px; padding-top: 6px; }
 .attachment-actions { gap: 2px; }
@@ -3665,16 +3667,19 @@ a:focus-visible {
   height: 38px;
   min-height: 38px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-ui);
 }
 .attachment-action { color: #666660; }
+.attachment-action svg { transition: transform 180ms ease; }
+.attachment-action.is-open { background: #edeeeb; color: #151515; }
+.attachment-action.is-open svg { transform: rotate(45deg); }
 .attachment-action:hover,
 .attachment-action:focus-visible { background: #edeeeb; color: #151515; }
 .send-message { justify-content: center; box-shadow: 0 2px 5px rgba(48, 72, 220, 0.24); }
 .send-message:disabled { background: #e2e2dd; color: #9b9b95; opacity: 1; }
-.location-preview { height: 116px; position: relative; display: block; margin-top: 9px; overflow: hidden; border-radius: 12px; background: #e8e8e3; }
+.location-preview { height: 116px; position: relative; display: block; margin-top: 9px; overflow: hidden; border-radius: var(--radius-ui); background: #e8e8e3; }
 .location-preview__map { width: 100%; height: 100%; pointer-events: none; }
-.location-preview__label { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: 7px; background: rgba(255, 255, 255, 0.92); color: #151515 !important; font-size: 11px !important; font-weight: 800; line-height: 1.2; }
+.location-preview__label { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: var(--radius-ui); background: rgba(255, 255, 255, 0.92); color: #151515 !important; font-size: 11px !important; font-weight: 800; line-height: 1.2; }
 .sent-message .location-preview { background: #d9defd; }
 
 @media (max-width: 620px) {
@@ -3696,7 +3701,7 @@ a:focus-visible {
 .location-preview {
   height: 92px;
   margin-top: 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
 }
 
 @media (max-width: 620px) {
@@ -3753,15 +3758,15 @@ a:focus-visible {
   width: 144px;
   position: absolute;
   z-index: 4;
-  bottom: calc(100% + 8px);
-  left: 0;
+  bottom: calc(100% + 10px);
+  left: -10px;
   display: grid;
   gap: 2px;
   padding: 5px;
   border: 1px solid rgba(21, 21, 21, 0.12);
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
   background: #fff;
-  box-shadow: 0 8px 20px rgba(21, 21, 21, 0.14);
+  box-shadow: 0 12px 28px rgba(21, 21, 21, 0.16);
 }
 
 .attachment-menu button {
@@ -3771,7 +3776,7 @@ a:focus-visible {
   gap: 9px;
   padding: 7px 9px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
   background: transparent;
   color: #454541;
   font: inherit;
@@ -3827,7 +3832,7 @@ a:focus-visible {
   bottom: -19px;
   z-index: 1;
   padding: 2px 5px;
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: #33332f;
   color: #fff;
   font-size: 10px;
@@ -3863,6 +3868,35 @@ a:focus-visible {
 
   .message-stack {
     max-width: 80%;
+  }
+}
+
+@media (max-width: 620px) {
+  .room-head { gap: 2px; }
+  .metrics-button { display: none; }
+
+  .settings-dialog__metrics {
+    width: 100%;
+    min-height: 44px;
+    margin-top: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid rgba(21, 21, 21, 0.14);
+    border-radius: var(--radius-ui);
+    background: #f5f4f1;
+    color: #454541;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .settings-dialog__metrics:hover,
+  .settings-dialog__metrics:focus-visible {
+    background: #fff;
+    color: #455ef5;
   }
 }
 
@@ -3913,7 +3947,7 @@ a:focus-visible {
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
   background: rgba(255, 255, 255, 0.18);
 }
 
@@ -3970,7 +4004,7 @@ a:focus-visible {
 .conversation .transfer-card .file-mark {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
 }
 
 .transfer-title {
