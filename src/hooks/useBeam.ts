@@ -15,7 +15,9 @@ type PeerSession = { peerId: string; displayName: string; role: 'creator' | 'mem
 type Sender<T> = (data: T, peerId?: string) => Promise<void>
 type RoomLike = { makeAction<T>(name: string): { send(data: T, options?: { target?: string }): Promise<void>; onMessage: ((data: T, context: { peerId: string }) => void) | null }; onPeerJoin: ((peerId: string) => void) | null; onPeerLeave: ((peerId: string) => void) | null; getPeers(): Record<string, RTCPeerConnection>; leave(): Promise<void> }
 type Incoming = { recordId: string; offer: FileOffer; chunks?: Uint8Array[]; bytes: number; peerId: string; accepted: boolean; meter?: ReturnType<typeof createTransferMeter>; lastReportedAt?: number }
-type AccessMessage = { type: 'probe' } | { type: 'status'; locked: boolean } | { type: 'authenticate' } | { type: 'admitted' }
+type AccessMessage =
+  | { type: 'join-request'; name: string; deviceType: DeviceType; token: string }
+  | { type: 'member-approved'; peerId: string; token: string }
 const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', NOT_FOUND_TIMEOUT = 8_000
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const incomingKey = (peerId: string, transferId: string) => `${peerId}:${transferId}`
@@ -32,12 +34,12 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [state, setState] = useState<ConnectionState>(secret ? 'waiting' : 'idle')
   const [passwordRequired, setPasswordRequired] = useState(false)
   const [peers, setPeers] = useState<Peer[]>([])
-  const [pendingPeers] = useState<Peer[]>([])
+  const [pendingPeers, setPendingPeers] = useState<Peer[]>([])
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [transfers, setTransfers] = useState<TransferRecord[]>([])
-  const [freeForAll, setFreeForAll] = useState(false)
+  const [freeForAll, setFreeForAllState] = useState(false)
   const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
-  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName)
+  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {})
   useEffect(() => { nameRef.current = displayName }, [displayName])
   const updateTransfer = useCallback((id: string, update: Partial<TransferRecord>) => setTransfers(current => current.map(item => item.id === id ? { ...item, ...update } : item)), [])
   const send = useCallback(async (message: BeamMessage, peerId?: string) => { await sendRef.current?.(message, peerId) }, [])
@@ -45,6 +47,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   useEffect(() => {
     if (!secret) { setState('idle'); return }
     let stopped = false; let room: RoomLike | null = null; let notFound: number | undefined; let foundTransportPeer = false
+    joined.current = isCreator; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([])
     const syncPeers = () => setPeers([...sessions.current.values()].filter(session => session.status === 'connected').map(session => ({ id: session.peerId, name: session.displayName, deviceType: session.deviceType })))
     const updateConnectionState = () => { if (!stopped) setState([...sessions.current.values()].some(session => session.status === 'connected') ? 'connected' : 'waiting') }
     const peerName = (peerId: string) => sessions.current.get(peerId)?.displayName ?? 'Connected device'
@@ -61,10 +64,55 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         room = joinRoom({ appId: 'beamdrop-v2', rtcConfig, password: material.signalingKey }, material.roomId) as unknown as RoomLike; roomRef.current = room
         const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS)
         sendRef.current = async (message, peerId) => { if (peerId) return control.send(message, { target: peerId }); await Promise.all([...sessions.current.values()].filter(session => session.status === 'connected').map(session => control.send(message, { target: session.peerId }))) }
-        const admit = (peerId: string) => { const session = sessions.current.get(peerId); if (!session || session.status === 'kicked') return; session.status = 'authenticated'; void access.send({ type: 'admitted' }, { target: peerId }); void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId }) }
-        room.onPeerJoin = peerId => { if (stopped) return; foundTransportPeer = true; sessions.current.set(peerId, { peerId, displayName: 'Connected device', role: 'member', status: 'pending', deviceType: 'computer' }); setState('peer-found'); void access.send({ type: 'probe' }, { target: peerId }) }
-        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session) session.status = 'disconnected'; endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); updateConnectionState() }
-        access.onMessage = (message, { peerId }) => { if (stopped || !message || typeof message !== 'object') return; if (message.type === 'probe') { void access.send({ type: 'status', locked: false }, { target: peerId }); return }; if (message.type === 'status') { void access.send({ type: 'authenticate' }, { target: peerId }); return }; if (message.type === 'authenticate') { admit(peerId); return }; if (message.type === 'admitted') { const session = sessions.current.get(peerId); if (!session || session.status === 'kicked') return; session.status = 'authenticated'; setPasswordRequired(false); void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId }) } }
+        const hello = (peerId: string) => void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId })
+        const addPendingPeer = (peer: Peer) => setPendingPeers(current => current.some(existing => existing.id === peer.id) ? current : [...current, peer])
+        const admit = (peerId: string) => {
+          const session = sessions.current.get(peerId), token = joinTokens.current.get(peerId)
+          if (!session || !token || session.status === 'kicked') return
+          session.status = 'authenticated'
+          setPendingPeers(current => current.filter(peer => peer.id !== peerId))
+          void Promise.all([...sessions.current.values()].filter(candidate => candidate.status !== 'kicked' && candidate.status !== 'disconnected').map(candidate => access.send({ type: 'member-approved', peerId, token }, { target: candidate.peerId })))
+          hello(peerId)
+        }
+        admitPeerRef.current = admit
+        room.onPeerJoin = peerId => {
+          if (stopped) return
+          foundTransportPeer = true
+          sessions.current.set(peerId, { peerId, displayName: 'Connected device', role: 'member', status: 'pending', deviceType: 'computer' })
+          setState(current => current === 'waiting' ? 'peer-found' : current)
+          if (!joined.current) void access.send({ type: 'join-request', name: nameRef.current, deviceType: inferDeviceType(), token: ownJoinToken.current }, { target: peerId })
+        }
+        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); updateConnectionState() }
+        access.onMessage = (message, { peerId }) => {
+          if (stopped || !message || typeof message !== 'object') return
+          const session = sessions.current.get(peerId)
+          if (!session || session.status === 'kicked') return
+          if (message.type === 'join-request') {
+            if (joined.current || isCreator) {
+              const valid = typeof message.name === 'string' && message.name.length <= 48 && ['phone', 'tablet', 'computer'].includes(message.deviceType) && typeof message.token === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(message.token)
+              if (!valid) return
+              session.displayName = message.name
+              session.deviceType = message.deviceType
+              joinTokens.current.set(peerId, message.token)
+              const firstGuest = isCreator && ![...sessions.current.values()].some(candidate => candidate.peerId !== peerId && candidate.status === 'connected')
+              if (firstGuest || freeForAllRef.current) admit(peerId)
+              else addPendingPeer({ id: peerId, name: message.name, deviceType: message.deviceType })
+            }
+            return
+          }
+          if (message.type !== 'member-approved' || typeof message.peerId !== 'string' || typeof message.token !== 'string') return
+          if (!joined.current && message.token === ownJoinToken.current) {
+            joined.current = true
+            setPasswordRequired(false)
+            for (const candidate of sessions.current.values()) if (candidate.status !== 'kicked' && candidate.status !== 'disconnected') { candidate.status = 'authenticated'; hello(candidate.peerId) }
+            return
+          }
+          const approved = sessions.current.get(message.peerId)
+          if (!approved || joinTokens.current.get(message.peerId) !== message.token || session.status !== 'connected') return
+          approved.status = 'authenticated'
+          setPendingPeers(current => current.filter(peer => peer.id !== message.peerId))
+          hello(message.peerId)
+        }
         control.onMessage = (raw, { peerId }) => {
           const message = parseMessage(raw); if (!message || stopped) return
           const session = sessions.current.get(peerId); if (!session || !['authenticated', 'connected'].includes(session.status)) return
@@ -82,7 +130,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) { void room?.leave(); setState('not-found') } }, NOT_FOUND_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; if (notFound) clearTimeout(notFound); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); sendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); admitPeerRef.current = () => {}; sendRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer])
 
   const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim(), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
@@ -91,7 +139,9 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const cancelTransferForPeer = useCallback((transferId: string, peerId: string) => { const transfer = outgoing.current.get(transferId), recipient = transfer?.recipients.get(peerId); if (!transfer || !recipient || isRecipientTerminal(recipient.status)) return; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; void send({ v: 2, type: 'file-cancel', transferId }, peerId); updateTransfer(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { outgoing.current.delete(transfer.id); updateTransfer(transfer.id, { file: undefined }) } }, [send, updateTransfer])
   const cancelTransfer = useCallback((recordId: string) => { const incomingTransfer = [...incoming.current.values()].find(value => value.recordId === recordId); if (incomingTransfer) { incoming.current.delete(incomingKey(incomingTransfer.peerId, incomingTransfer.offer.transferId)); void send({ v: 2, type: 'file-cancel', transferId: incomingTransfer.offer.transferId }, incomingTransfer.peerId); updateTransfer(recordId, { status: 'cancelled' }); return }; const transfer = outgoing.current.get(recordId); if (transfer) for (const peerId of transfer.recipients.keys()) cancelTransferForPeer(recordId, peerId) }, [cancelTransferForPeer, send, updateTransfer])
   const kickPeer = useCallback((peerId: string) => { if (!isCreator) return; const session = sessions.current.get(peerId); if (session) session.status = 'kicked'; endTransfersForKick(outgoing.current, peerId, updateTransfer); void send({ v: 2, type: 'kick-notice' }, peerId); setPeers(current => current.filter(peer => peer.id !== peerId)) }, [isCreator, send, updateTransfer])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer: (_peerId: string) => {}, kickPeer, freeForAll, setFreeForAll: (enabled: boolean) => { if (isCreator) setFreeForAll(enabled) }, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  const admitPeer = useCallback((peerId: string) => admitPeerRef.current(peerId), [])
+  const setFreeForAll = useCallback((enabled: boolean) => { if (!isCreator) return; freeForAllRef.current = enabled; setFreeForAllState(enabled) }, [isCreator])
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }
