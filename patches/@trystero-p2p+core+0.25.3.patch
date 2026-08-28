@@ -1,0 +1,34 @@
+diff --git a/node_modules/@trystero-p2p/core/dist/action-wire.mjs b/node_modules/@trystero-p2p/core/dist/action-wire.mjs
+index 992caaa..79ab88f 100644
+--- a/node_modules/@trystero-p2p/core/dist/action-wire.mjs
++++ b/node_modules/@trystero-p2p/core/dist/action-wire.mjs
+@@ -10,6 +10,7 @@ const payloadIndex = 36;
+ const chunkSize = 16 * 2 ** 10 - payloadIndex;
+ const oneByteMax = 255;
+ const twoByteMax = 65535;
++const dataChannelHighWaterMark = 1024 * 1024;
+ const buffLowEvent = "bufferedamountlow";
+ const channelCloseEvent = "close";
+ const channelErrorEvent = "error";
+@@ -116,7 +117,7 @@ const createActionWireManager = ({ getPeer, getPeerIds, canReceiveFromPeer, thro
+ 						throwIfAborted(signal);
+ 						const chunk = chunks[chunkN];
+ 						if (!chunk) break;
+-						if (channel && channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
++						if (channel && channel.bufferedAmount > dataChannelHighWaterMark) {
+ 							const didDrain = await waitForBufferedAmountLow(channel);
+ 							throwIfAborted(signal);
+ 							if (!didDrain) break;
+diff --git a/node_modules/@trystero-p2p/core/dist/peer.mjs b/node_modules/@trystero-p2p/core/dist/peer.mjs
+index 8003df9..3cb93d7 100644
+--- a/node_modules/@trystero-p2p/core/dist/peer.mjs
++++ b/node_modules/@trystero-p2p/core/dist/peer.mjs
+@@ -101,7 +101,7 @@ var peer_default = (initiator, { trickleIce, rtcConfig, rtcPolyfill, turnConfig,
+ 	};
+ 	const setupDataChannel = (channel) => {
+ 		channel.binaryType = "arraybuffer";
+-		channel.bufferedAmountLowThreshold = 65535;
++		channel.bufferedAmountLowThreshold = 256 * 1024;
+ 		channel.onmessage = (e) => {
+ 			const data = e.data;
+ 			if (handlers.data) handlers.data(data);

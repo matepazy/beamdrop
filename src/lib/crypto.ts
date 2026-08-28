@@ -26,7 +26,7 @@ export async function encryptBytes(key: CryptoKey, bytes: Uint8Array): Promise<U
 export async function decryptBytes(key: CryptoKey, value: unknown): Promise<Uint8Array | null> {
   const bytes = value instanceof Uint8Array ? value : value instanceof ArrayBuffer ? new Uint8Array(value) : null
   if (!bytes || bytes.length <= IV_LENGTH) return null
-  try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(0, IV_LENGTH) }, key, bytes.slice(IV_LENGTH))) } catch { return null }
+  try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, IV_LENGTH) }, key, bytes.subarray(IV_LENGTH))) } catch { return null }
 }
 
 export async function encryptMessage(key: CryptoKey, value: unknown) { return encryptBytes(key, textEncoder.encode(JSON.stringify(value))) }

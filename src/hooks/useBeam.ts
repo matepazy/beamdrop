@@ -19,6 +19,15 @@ import {
   type FileOffer,
 } from '../lib/protocol'
 import { getRtcConfig } from '../lib/rtc'
+import {
+  getRoomDiagnostics,
+  type RtcDiagnostics,
+} from '../lib/rtcDiagnostics'
+import {
+  createTransferMeter,
+  PREPARED_CHUNK_COUNT,
+  shouldReportProgress,
+} from '../lib/transfer'
 
 export type ConnectionState =
   | 'idle'
@@ -61,6 +70,9 @@ export type TransferRecord = {
     | 'interrupted'
   progress: number
   speed: number
+  averageSpeed?: number
+  peakSpeed?: number
+  elapsedMs?: number
   file?: File
 }
 
@@ -70,23 +82,20 @@ export type Peer = {
   deviceType: DeviceType
 }
 
-type Receiver<T> = (
-  callback: (data: T, peerId: string) => void,
-) => void
-
 type Sender<T> = (
   data: T,
   peerId?: string,
 ) => void | Promise<void>
 
 type RoomLike = {
-  makeAction<T>(name: string): [
-    Sender<T>,
-    Receiver<T>,
-  ]
-  onPeerJoin(callback: (peerId: string) => void): void
-  onPeerLeave(callback: (peerId: string) => void): void
-  leave(): void
+  makeAction<T>(name: string): {
+    send(data: T, options?: { target?: string }): Promise<void>
+    onMessage: ((data: T, context: { peerId: string }) => void) | null
+  }
+  onPeerJoin: ((peerId: string) => void) | null
+  onPeerLeave: ((peerId: string) => void) | null
+  getPeers(): Record<string, RTCPeerConnection>
+  leave(): Promise<void>
 }
 
 type IncomingFile = {
@@ -95,6 +104,8 @@ type IncomingFile = {
   bytes: number
   startedAt: number
   peerId: string
+  meter?: ReturnType<typeof createTransferMeter>
+  lastReportedAt?: number
 }
 
 type AccessMessage =
@@ -158,6 +169,9 @@ export function useBeam(
   )
   const outgoingRef = useRef(new Map<string, File>())
   const cancelledRef = useRef(new Set<string>())
+  const transferAbortersRef = useRef(
+    new Map<string, AbortController>(),
+  )
 
   const approvedRef = useRef(new Set<string>())
   const knownRef = useRef(new Map<string, Peer>())
@@ -399,20 +413,15 @@ export function useBeam(
 
         roomRef.current = room
 
-        const [sendControl, onControl] =
-          room.makeAction<Uint8Array>(
-            CONTROL_ACTION,
-          )
-
-        const [sendChunk, onChunk] =
-          room.makeAction<Uint8Array>(
-            CHUNK_ACTION,
-          )
-
-        const [sendAccess, onAccess] =
-          room.makeAction<AccessMessage>(
-            ACCESS_ACTION,
-          )
+        const controlAction = room.makeAction<Uint8Array>(CONTROL_ACTION)
+        const chunkAction = room.makeAction<Uint8Array>(CHUNK_ACTION)
+        const accessAction = room.makeAction<AccessMessage>(ACCESS_ACTION)
+        const sendControl: Sender<Uint8Array> = (data, peerId) =>
+          controlAction.send(data, peerId ? { target: peerId } : undefined)
+        const sendChunk: Sender<Uint8Array> = (data, peerId) =>
+          chunkAction.send(data, peerId ? { target: peerId } : undefined)
+        const sendAccess: Sender<AccessMessage> = (data, peerId) =>
+          accessAction.send(data, peerId ? { target: peerId } : undefined)
 
         controlSenderRef.current = sendControl
 
@@ -812,6 +821,14 @@ export function useBeam(
 
           if (!file) return
 
+          const controller = new AbortController()
+          transferAbortersRef.current.set(
+            message.transferId,
+            controller,
+          )
+
+          updateTransfer(message.transferId, { status: 'active' })
+
           void sendFileChunks({
             id: message.transferId,
             file,
@@ -821,17 +838,29 @@ export function useBeam(
             key: keyRef.current ?? key,
             isCancelled: id =>
               cancelledRef.current.has(id),
-            report: (progress, speed) => {
+            signal: controller.signal,
+            report: (progress, speed, metrics) => {
               updateTransfer(
                 message.transferId,
                 {
                   status: 'active',
                   progress,
                   speed,
+                  averageSpeed: metrics?.averageSpeed,
+                  peakSpeed: metrics?.peakSpeed,
+                  elapsedMs: metrics?.elapsedMs,
                 },
               )
             },
           })
+            .catch(() => {
+              if (!cancelledRef.current.has(message.transferId)) {
+                updateTransfer(message.transferId, { status: 'interrupted' })
+              }
+            })
+            .finally(() => {
+              transferAbortersRef.current.delete(message.transferId)
+            })
         }
 
         const handleControl = async (
@@ -951,6 +980,7 @@ export function useBeam(
               break
 
             case 'file-complete':
+              outgoingRef.current.delete(message.transferId)
               updateTransfer(
                 message.transferId,
                 {
@@ -996,22 +1026,24 @@ export function useBeam(
           incoming.chunks.push(bytes)
           incoming.bytes += bytes.byteLength
 
-          const elapsedSeconds = Math.max(
-            (Date.now() -
-              incoming.startedAt) /
-              1000,
-            0.1,
-          )
+          const meter = incoming.meter ??= createTransferMeter()
+          const measurement = meter(incoming.bytes)
+          const now = performance.now()
 
-          updateTransfer(id, {
-            status: 'active',
-            progress:
-              incoming.bytes /
-              incoming.offer.size,
-            speed:
-              incoming.bytes /
-              elapsedSeconds,
-          })
+          if (
+            shouldReportProgress(incoming.lastReportedAt ?? 0, now) ||
+            incoming.bytes >= incoming.offer.size
+          ) {
+            incoming.lastReportedAt = now
+            updateTransfer(id, {
+              status: 'active',
+              progress: incoming.bytes / incoming.offer.size,
+              speed: measurement.speed,
+              averageSpeed: measurement.averageSpeed,
+              peakSpeed: measurement.peakSpeed,
+              elapsedMs: measurement.elapsedMs,
+            })
+          }
 
           if (
             incoming.bytes <
@@ -1060,17 +1092,16 @@ export function useBeam(
           )
         }
 
-        room.onPeerJoin(handlePeerJoin)
-        room.onPeerLeave(handlePeerLeave)
-        onAccess(handleAccess)
-
-        onControl((raw, peerId) => {
+        room.onPeerJoin = handlePeerJoin
+        room.onPeerLeave = handlePeerLeave
+        accessAction.onMessage = (message, { peerId }) =>
+          handleAccess(message, peerId)
+        controlAction.onMessage = (raw, { peerId }) => {
           void handleControl(raw, peerId)
-        })
-
-        onChunk((raw, peerId) => {
+        }
+        chunkAction.onMessage = (raw, { peerId }) => {
           void handleChunk(raw, peerId)
-        })
+        }
 
         if (!isCreator) {
           notFoundTimer =
@@ -1102,6 +1133,8 @@ export function useBeam(
       incomingRef.current.forEach(file => {
         file.chunks.length = 0
       })
+      transferAbortersRef.current.forEach(controller => controller.abort())
+      transferAbortersRef.current.clear()
     }
   }, [secret, isCreator, send])
 
@@ -1224,6 +1257,8 @@ export function useBeam(
   const cancelTransfer = useCallback(
     (id: string) => {
       cancelledRef.current.add(id)
+      transferAbortersRef.current.get(id)?.abort()
+      transferAbortersRef.current.delete(id)
 
       void send({
         type: 'file-cancel',
@@ -1328,6 +1363,10 @@ export function useBeam(
     kickPeer,
     freeForAll,
     setFreeForAll,
+    getDiagnostics: async (): Promise<RtcDiagnostics[]> =>
+      roomRef.current
+        ? getRoomDiagnostics(roomRef.current.getPeers())
+        : [],
   }
 }
 
@@ -1342,9 +1381,15 @@ type SendFileChunksOptions = {
   ) => Promise<void>
   key: CryptoKey
   isCancelled: (id: string) => boolean
+  signal: AbortSignal
   report: (
     progress: number,
     speed: number,
+    metrics?: {
+      averageSpeed: number
+      peakSpeed: number
+      elapsedMs: number
+    },
   ) => void
 }
 
@@ -1356,79 +1401,96 @@ async function sendFileChunks({
   sendControl,
   key,
   isCancelled,
+  signal,
   report,
 }: SendFileChunksOptions) {
-  const startedAt = Date.now()
+  type PreparedChunk = {
+    encrypted: Uint8Array
+    byteLength: number
+  }
 
-  for (
-    let offset = 0, index = 0;
-    offset < file.size;
-    offset += CHUNK_SIZE, index++
-  ) {
-    if (isCancelled(id)) return
+  let nextOffset = 0
+  let nextIndex = 0
+  const meter = createTransferMeter()
+  let lastReportedAt = 0
 
-    const buffer = await file
-      .slice(
-        offset,
-        offset + CHUNK_SIZE,
-      )
-      .arrayBuffer()
+  const prepare = async (): Promise<PreparedChunk | null> => {
+    if (signal.aborted || isCancelled(id) || nextOffset >= file.size) {
+      return null
+    }
 
-    const body = new Uint8Array(buffer)
+    const offset = nextOffset
+    const index = nextIndex
+    nextOffset += CHUNK_SIZE
+    nextIndex += 1
 
-    const encoded = encodeChunk(
-      id,
-      index,
-      body,
-    )
+    const body = new Uint8Array(await file
+      .slice(offset, Math.min(offset + CHUNK_SIZE, file.size))
+      .arrayBuffer())
+    if (signal.aborted || isCancelled(id)) return null
 
-    const encrypted =
-      await encryptBytes(key, encoded)
-
-    await sendChunk(
-      encrypted,
-      peerId,
-    )
-
-    const sentBytes = Math.min(
-      offset + body.byteLength,
-      file.size,
-    )
-
-    const elapsedSeconds = Math.max(
-      (Date.now() - startedAt) / 1000,
-      0.1,
-    )
-
-    report(
-      sentBytes / file.size,
-      sentBytes / elapsedSeconds,
-    )
-
-    if (Date.now() - startedAt > 16) {
-      await new Promise<void>(resolve =>
-        setTimeout(resolve, 0),
-      )
+    return {
+      encrypted: await encryptBytes(key, encodeChunk(id, index, body)),
+      byteLength: body.byteLength,
     }
   }
 
-  await sendControl(
-    {
-      type: 'file-complete',
-      transferId: id,
-    },
-    peerId,
-  )
+  // Keep a small, fixed amount of disk I/O and WebCrypto work ahead of the
+  // network sender. This is deliberately bounded for multi-gigabyte files.
+  const prepared: Promise<PreparedChunk | null>[] = []
+  const fillPrepared = () => {
+    while (prepared.length < PREPARED_CHUNK_COUNT && nextOffset < file.size) {
+      prepared.push(prepare())
+    }
+  }
 
-  const elapsedSeconds = Math.max(
-    (Date.now() - startedAt) / 1000,
-    0.1,
-  )
+  let sentBytes = 0
+  try {
+    fillPrepared()
+    while (prepared.length > 0) {
+      // Await in file order even if a later encryption operation completes
+      // first: the receiver intentionally rejects out-of-order chunks.
+      const item = await prepared.shift()!
+      if (!item || signal.aborted || isCancelled(id)) return
 
-  report(
-    1,
-    file.size / elapsedSeconds,
-  )
+      // Trystero 0.25 performs conservative, event-driven DataChannel
+      // backpressure internally. Awaiting this preserves action ordering while
+      // its queue stays full through each 64 KiB Beam chunk.
+      await sendChunk(item.encrypted, peerId)
+      sentBytes += item.byteLength
+      fillPrepared()
+
+      const measurement = meter(sentBytes)
+      const now = performance.now()
+      if (
+        shouldReportProgress(lastReportedAt, now) ||
+        sentBytes >= file.size
+      ) {
+        lastReportedAt = now
+        report(sentBytes / file.size, measurement.speed, measurement)
+      }
+    }
+
+    if (signal.aborted || isCancelled(id)) return
+
+    await sendControl({ type: 'file-complete', transferId: id }, peerId)
+    const finalMeasurement = meter(file.size)
+    report(1, finalMeasurement.speed, finalMeasurement)
+    if (import.meta.env.DEV) {
+      console.info('Beam transfer complete', {
+        size: file.size,
+        durationMs: Math.round(finalMeasurement.elapsedMs),
+        averageBytesPerSecond: Math.round(finalMeasurement.averageSpeed),
+        peakBytesPerSecond: Math.round(finalMeasurement.peakSpeed),
+      })
+    }
+  } finally {
+    // A cancelled transfer can still have a few WebCrypto operations in flight.
+    // Observe them before dropping the bounded queue so rejected promises never
+    // become unhandled rejections.
+    await Promise.allSettled(prepared)
+    prepared.length = 0
+  }
 }
 
 function encodeChunk(
@@ -1462,19 +1524,19 @@ function decodeChunk(
   const decoder = new TextDecoder()
 
   const id = decoder.decode(
-    data.slice(0, firstSeparator),
+    data.subarray(0, firstSeparator),
   )
 
   const index = Number(
     decoder.decode(
-      data.slice(
+    data.subarray(
         firstSeparator + 1,
         secondSeparator,
       ),
     ),
   )
 
-  const body = data.slice(
+  const body = data.subarray(
     secondSeparator + 1,
   )
 
