@@ -10,6 +10,12 @@ export type RtcDiagnostics = {
   bytesReceived: number | null
 }
 
+export type ConnectionHealth = {
+  tone: 'good' | 'caution' | 'problem'
+  label: string
+  guidance: string
+}
+
 type StatsWithType = RTCStats & {
   localCandidateId?: string
   remoteCandidateId?: string
@@ -68,9 +74,63 @@ export async function getRtcDiagnostics(
 export async function getRoomDiagnostics(
   peers: Record<string, RTCPeerConnection>,
 ) {
-  return Promise.all(
+  const results = await Promise.allSettled(
     Object.entries(peers).map(([peerId, peer]) =>
       getRtcDiagnostics(peerId, peer),
     ),
   )
+
+  return results.flatMap(result =>
+    result.status === 'fulfilled' ? [result.value] : [],
+  )
+}
+
+/** A privacy-safe, user-facing reading of the currently selected WebRTC route. */
+export function connectionHealth(
+  diagnostics: RtcDiagnostics[],
+): ConnectionHealth {
+  if (!diagnostics.length) {
+    return {
+      tone: 'caution',
+      label: 'Checking connection',
+      guidance: 'Connection details will appear after the browsers finish negotiating.',
+    }
+  }
+
+  if (diagnostics.some(diagnostic => diagnostic.route === 'unknown')) {
+    return {
+      tone: 'caution',
+      label: 'Connection details unavailable',
+      guidance: 'The connection is active, but this browser has not published route details yet.',
+    }
+  }
+
+  const worstLatency = Math.max(
+    ...diagnostics.map(diagnostic => diagnostic.currentRoundTripTimeMs ?? 0),
+  )
+  const usesRelay = diagnostics.some(diagnostic => diagnostic.route === 'turn-relay')
+
+  if (worstLatency >= 500) {
+    return {
+      tone: 'problem',
+      label: 'Unstable connection',
+      guidance: 'The route is responding slowly. Keep both browsers open and try a stronger network before sending a large file.',
+    }
+  }
+
+  if (usesRelay) {
+    return {
+      tone: 'caution',
+      label: 'Connected through a relay',
+      guidance: 'Your content remains browser-encrypted, but this network route can be slower than a direct connection.',
+    }
+  }
+
+  return {
+    tone: 'good',
+    label: worstLatency >= 250 ? 'Connected, slower route' : 'Direct connection',
+    guidance: worstLatency >= 250
+      ? 'This connection should work, though large transfers may take longer than usual.'
+      : 'The browsers are connected directly and ready to share.',
+  }
 }

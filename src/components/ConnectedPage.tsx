@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 
 import { formatBytes, hostnameFor, isUrl } from '../lib/format'
 import { isPotentiallyDangerousFile } from '../lib/dangerousFile'
+import { connectionHealth } from '../lib/rtcDiagnostics'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
@@ -62,6 +63,7 @@ export function ConnectedPage({
   const dangerousFileDialogRef = useRef<HTMLElement>(null)
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const connected = beam.state === 'connected'
+  const health = connectionHealth(diagnostics)
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
@@ -103,7 +105,7 @@ export function ConnectedPage({
   }, [attachmentsOpen])
 
   useEffect(() => {
-    if (!metricsOpen) return
+    if (!metricsOpen && !connected) return
 
     let active = true
     const refresh = async () => {
@@ -114,12 +116,15 @@ export function ConnectedPage({
     }
 
     void refresh()
-    const interval = window.setInterval(() => void refresh(), 2_000)
+    const interval = window.setInterval(
+      () => void refresh(),
+      metricsOpen ? 2_000 : 5_000,
+    )
     return () => {
       active = false
       window.clearInterval(interval)
     }
-  }, [metricsOpen])
+  }, [connected, metricsOpen])
 
   useEffect(() => {
     if (!pendingDangerousFile) return
@@ -283,6 +288,7 @@ export function ConnectedPage({
         copied={copied}
         onQr={() => setQrOpen(true)}
         onEnd={onEnd}
+        onRetry={beam.retryConnection}
         qrOpen={qrOpen}
         closeQr={() => setQrOpen(false)}
       />
@@ -443,6 +449,19 @@ export function ConnectedPage({
         </div>
       </details>
 
+      {diagnostics.length > 0 && health.tone !== 'good' && (
+        <div
+          className={`participants-connection participants-connection--${health.tone}`}
+          role="status"
+        >
+          <Activity size={15} aria-hidden="true" />
+          <div>
+            <strong>{health.label}</strong>
+            <span>{health.guidance}</span>
+          </div>
+        </div>
+      )}
+
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
         {hasActivity || beam.pendingPeers.length > 0 || typingNames.length > 0 ? (
           <div className="conversation-feed">
@@ -597,6 +616,7 @@ export function ConnectedPage({
             <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="metrics-dialog__head"><div><Activity size={19} /><div><h2 id="beam-metrics-title">Technical metrics</h2></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close technical metrics"><X size={18} /></button></div>
               <div className="metrics-dialog__privacy"><LockKeyhole size={15} /> Candidate addresses are never shown.</div>
+              <section className={`connection-health connection-health--${health.tone}`} aria-live="polite"><strong>{health.label}</strong><p>{health.guidance}</p></section>
               {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers.find(peer => peer.id === diagnostic.peerId)?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
               <section className="metrics-transfers"><h3>Transfer telemetry</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No file transfers in this Beam yet.</p>}</section>
               <p className="metrics-dialog__updated"><RefreshCw size={13} /> Updates every 2 seconds{diagnosticsUpdatedAt ? ` · checked ${new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(diagnosticsUpdatedAt)}` : ''}</p>

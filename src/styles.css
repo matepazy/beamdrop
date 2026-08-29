@@ -1478,6 +1478,28 @@ a:focus-visible {
   color: #ffadad;
 }
 
+.retry-connection {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, .24);
+  border-radius: var(--radius-ui);
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.retry-connection:hover,
+.retry-connection:focus-visible {
+  background: rgba(255, 255, 255, .18);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -2277,6 +2299,19 @@ a:focus-visible {
 .transfer-metric strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4b4b46; font-size: 13px; font-weight: 600; }
 .transfer-metric > div > span { flex: none; color: #83837d; font-size: 11px; text-transform: capitalize; }
 .metrics-dialog__updated { justify-content: center; gap: 5px; margin: 0; color: #85857f; font-size: 11px; }
+.connection-health { margin: 0 0 16px; padding: 12px 13px; border-radius: 12px; background: #f3f4f2; color: #555552; }
+.connection-health strong { display: block; font-size: 13px; font-weight: 650; }
+.connection-health p { margin: 4px 0 0; font-size: 12px; line-height: 1.45; }
+.connection-health--good { background: #edf7ef; color: #27633b; }
+.connection-health--caution { background: #fff7e7; color: #815b14; }
+.connection-health--problem { background: #fff0ef; color: #a13d34; }
+.participants-connection { display: flex; align-items: flex-start; gap: 8px; margin: 0 12px 10px; padding: 9px 10px; border-radius: 10px; font-size: 12px; line-height: 1.4; }
+.participants-connection svg { flex: none; margin-top: 1px; }
+.participants-connection strong, .participants-connection span { display: block; }
+.participants-connection strong { font-size: 12px; font-weight: 650; }
+.participants-connection span { margin-top: 1px; opacity: .84; }
+.participants-connection--caution { background: #fff7e7; color: #815b14; }
+.participants-connection--problem { background: #fff0ef; color: #a13d34; }
 
 @media (max-width: 620px) {
   .metrics-button { width: 44px; min-width: 44px; min-height: 44px; border-radius: var(--radius-ui); }

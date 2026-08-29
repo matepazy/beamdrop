@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Check, Copy, LoaderCircle, LockKeyhole, QrCode, X } from 'lucide-react'
+import { Check, Copy, LoaderCircle, LockKeyhole, QrCode, RefreshCw, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 
@@ -17,6 +17,7 @@ export function WaitingPage({
   copied,
   onQr,
   onEnd,
+  onRetry,
   qrOpen,
   closeQr,
 }: {
@@ -31,6 +32,7 @@ export function WaitingPage({
   copied: boolean
   onQr(): void
   onEnd(): void
+  onRetry(): void
   qrOpen: boolean
   closeQr(): void
 }) {
@@ -146,6 +148,17 @@ export function WaitingPage({
               ? 'Send it to the device you want to connect.'
               : 'Looking for a Beam with this code.'}
           </p>
+        )}
+
+        {(state === 'disconnected' || state === 'failed') && (
+          <button
+            className="retry-connection"
+            type="button"
+            onClick={onRetry}
+          >
+            <RefreshCw size={16} />
+            Try again now
+          </button>
         )}
 
         <div className="waiting-actions">
