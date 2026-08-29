@@ -33,11 +33,17 @@ type CanvasMessage =
   | { type: 'sync'; canvas: CanvasSession }
   | { type: 'rename'; canvasId: string; name: string }
   | { type: 'stroke'; canvasId: string; stroke: CanvasStroke }
+  | { type: 'stroke-start'; canvasId: string; stroke: Omit<CanvasStroke, 'points'>; point: CanvasPoint }
+  | { type: 'stroke-points'; canvasId: string; id: string; points: number[] }
   | { type: 'image'; canvasId: string; image: CanvasImage }
   | { type: 'delete'; canvasId: string; id: string }
-const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', TYPING = 'beam-typing-v1', CANVAS = 'beam-canvas-v1', NOT_FOUND_TIMEOUT = 8_000, TYPING_TIMEOUT = 3_500, TYPING_REFRESH_INTERVAL = 1_500
+const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', TYPING = 'beam-typing-v1', CANVAS = 'beam-canvas-v2', NOT_FOUND_TIMEOUT = 8_000, TYPING_TIMEOUT = 3_500, TYPING_REFRESH_INTERVAL = 1_500
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const canvasMessageBytes = (message: CanvasMessage) => new TextEncoder().encode(JSON.stringify(message)).byteLength
+// Half-pixel precision is visually indistinguishable here, but keeps live drawing packets compact.
+const compactPoint = (point: CanvasPoint) => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 })
+const compactPoints = (points: CanvasPoint[]) => points.flatMap(point => { const compact = compactPoint(point); return [compact.x, compact.y] })
+const expandPoints = (points: number[]) => points.reduce<CanvasPoint[]>((result, value, index) => index % 2 ? [...result, { x: points[index - 1], y: value }] : result, [])
 const incomingKey = (peerId: string, transferId: string) => `${peerId}:${transferId}`
 function outgoingView(transfer: OutgoingTransfer): Pick<TransferRecord, 'status' | 'progress'> {
   const recipients = [...transfer.recipients.values()]
@@ -160,6 +166,17 @@ export function useBeam(secret: string | null, _password: string, displayName: s
               if (index < 0) return { ...current, strokes: [...current.strokes, message.stroke] }
               if (current.strokes[index].points.length > message.stroke.points.length) return current
               return { ...current, strokes: current.strokes.map((stroke, candidate) => candidate === index ? message.stroke : stroke) }
+            })
+          } else if (message.type === 'stroke-start' && canvasRef.current?.id === message.canvasId && message.stroke && typeof message.stroke.id === 'string' && Number.isFinite(message.point.x) && Number.isFinite(message.point.y)) {
+            setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
+            const stroke: CanvasStroke = { ...message.stroke, points: [compactPoint(message.point)] }
+            setCanvas(current => current && current.id === message.canvasId && !current.strokes.some(candidate => candidate.id === stroke.id) ? { ...current, strokes: [...current.strokes, stroke] } : current)
+          } else if (message.type === 'stroke-points' && canvasRef.current?.id === message.canvasId && typeof message.id === 'string' && Array.isArray(message.points) && message.points.length <= 400 && message.points.length % 2 === 0 && message.points.every(Number.isFinite)) {
+            setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
+            const points = expandPoints(message.points)
+            setCanvas(current => {
+              if (!current || current.id !== message.canvasId || !points.length) return current
+              return { ...current, strokes: current.strokes.map(stroke => stroke.id === message.id ? { ...stroke, points: [...stroke.points, ...points] } : stroke) }
             })
           } else if (message.type === 'image' && canvasRef.current?.id === message.canvasId && message.image && typeof message.image.id === 'string' && typeof message.image.dataUrl === 'string' && message.image.dataUrl.length <= 1_400_000) {
             setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
@@ -284,10 +301,12 @@ export function useBeam(secret: string | null, _password: string, displayName: s
     setFeed(items => items.map(item => item.id === `canvas:${current.id}` ? { ...item, value: name } : item))
     void canvasSendRef.current?.({ type: 'rename', canvasId: current.id, name })
   }, [])
-  const addCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length <= stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
+  const addCanvasStroke = useCallback((stroke: CanvasStroke, broadcast = true) => { const current = canvasRef.current; if (!current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length <= stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); if (broadcast) void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
+  const startCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current || !stroke.points.length || current.strokes.some(item => item.id === stroke.id)) return; const point = compactPoint(stroke.points[0]), { points: _points, ...header } = stroke; setCanvas({ ...current, strokes: [...current.strokes, { ...stroke, points: [point] }] }); void canvasSendRef.current?.({ type: 'stroke-start', canvasId: current.id, stroke: header, point }) }, [])
+  const appendCanvasStrokePoints = useCallback((id: string, points: CanvasPoint[]) => { const current = canvasRef.current; if (!current || !points.length) return; void canvasSendRef.current?.({ type: 'stroke-points', canvasId: current.id, id, points: compactPoints(points) }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
   const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeerIds, setTyping, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeerIds, setTyping, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }
