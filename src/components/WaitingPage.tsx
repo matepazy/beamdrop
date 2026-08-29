@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Check, Copy, LoaderCircle, LockKeyhole, QrCode, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 
 const PASSWORD_FEATURE_ENABLED = false
@@ -316,6 +316,7 @@ function QrDialog({
 }) {
   const [dataUrl, setDataUrl] =
     useState('')
+  const closeButton = useRef<HTMLButtonElement>(null)
 
   const joinUrl = useMemo(
     () =>
@@ -337,6 +338,17 @@ function QrDialog({
     ).then(setDataUrl)
   }, [joinUrl])
 
+  useEffect(() => {
+    closeButton.current?.focus()
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    addEventListener('keydown', closeOnEscape)
+    return () => removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
   return (
     <div
       className="dialog-backdrop"
@@ -353,6 +365,7 @@ function QrDialog({
         }
       >
         <button
+          ref={closeButton}
           className="close"
           onClick={onClose}
           aria-label="Close"

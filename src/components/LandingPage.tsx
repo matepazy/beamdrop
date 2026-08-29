@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
+import type { MotionProps } from 'framer-motion'
 import { ArrowDown, ArrowRight, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -15,6 +16,7 @@ export function LandingPage({
   const [join, setJoin] = useState('')
   const [navOnDarkSurface, setNavOnDarkSurface] = useState(false)
   const details = useRef<HTMLElement>(null)
+  const reduceMotion = useReducedMotion()
   const create = () => onCreate(generatePassphrase(), '')
   const joinSecret = secretFromJoinInput(join)
   const isJoinValid = isValidSecret(joinSecret)
@@ -27,12 +29,13 @@ export function LandingPage({
     const darkSections = () =>
       Array.from(
         document.querySelectorAll<HTMLElement>(
-          '.how-it-works, .closing, .site-footer',
+          '[data-nav-contrast="light"]',
         ),
       )
 
     const syncNavContrast = () => {
-      const navY = 48
+      const navBounds = document.querySelector('.floating-nav')?.getBoundingClientRect()
+      const navY = navBounds ? navBounds.top + navBounds.height / 2 : 48
       const isOverDarkSection = darkSections().some((section) => {
         const { top, bottom } = section.getBoundingClientRect()
         return top <= navY && bottom >= navY
@@ -57,35 +60,48 @@ export function LandingPage({
       block: 'start',
     })
 
+  const enter = (delay = 0): MotionProps =>
+    reduceMotion
+      ? {}
+      : {
+          initial: { opacity: 0, y: 18 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.55, delay, ease: 'circOut' },
+        }
+
   return (
     <motion.section
       className="home"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={reduceMotion ? undefined : { opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
     >
-      <section className="landing-hero">
-        <div
-          className={`floating-nav${navOnDarkSurface ? ' floating-nav--on-dark' : ''}`}
-          aria-label="Beam introduction"
+      <div className="nav-blur" aria-hidden="true" />
+
+      <div
+        className={`floating-nav${navOnDarkSurface ? ' floating-nav--on-dark' : ''}`}
+        aria-label="Beam introduction"
+      >
+        <button
+          className="brand-pill"
+          onClick={() =>
+            scrollTo({
+              top: 0,
+              behavior: 'smooth',
+            })
+          }
+          aria-label="Beam home"
         >
-          <button
-            className="brand-pill"
-            onClick={() =>
-              scrollTo({
-                top: 0,
-                behavior: 'smooth',
-              })
-            }
-            aria-label="Beam home"
-          >
-            <Logo />
-          </button>
+          <Logo />
+        </button>
 
-          <InfoMenu />
-        </div>
+        <InfoMenu />
+      </div>
 
-        <div className="hero-copy">
+      <section className="landing-hero">
+        <motion.div className="hero-copy" {...enter(0.08)}>
+          <p className="hero-kicker">Private browser-to-browser handoff</p>
+
           <h1>
             Pass it on.
             <br />
@@ -96,9 +112,9 @@ export function LandingPage({
             <span>Files, notes, and links travel from one browser to another.</span>
             <span>No account, no upload, no trace left behind.</span>
           </p>
-        </div>
+        </motion.div>
 
-        <div className="hero-actions">
+        <motion.div className="hero-actions" {...enter(0.18)}>
           <button
             className="primary create-button"
             onClick={create}
@@ -122,7 +138,14 @@ export function LandingPage({
               <input
                 id="beam-code"
                 aria-label="Beam link, code, or passphrase"
+                aria-describedby={
+                  join.length > 0 && !isJoinValid
+                    ? 'beam-code-help'
+                    : undefined
+                }
                 aria-invalid={join.length > 0 && !isJoinValid}
+                autoComplete="off"
+                spellCheck={false}
                 value={join}
                 onChange={(event) => setJoin(event.target.value)}
                 onKeyDown={(event) => {
@@ -143,24 +166,32 @@ export function LandingPage({
                 {isJoinValid && <ArrowRight size={16} aria-hidden="true" />}
               </button>
             </form>
-          </div>
-        </div>
 
-        <button
+            {join.length > 0 && !isJoinValid && (
+              <p className="join-help" id="beam-code-help" role="status">
+                Paste a Beam link or enter the complete code to join.
+              </p>
+            )}
+          </div>
+        </motion.div>
+
+        <motion.button
           className="scroll-cue"
           onClick={revealDetails}
+          {...enter(0.3)}
         >
           Scroll down for more info
           <ArrowDown size={15} />
-        </button>
+        </motion.button>
       </section>
 
       <section
         className="how-it-works"
         ref={details}
         id="how-it-works"
+        data-nav-contrast="light"
       >
-        <div className="section-intro">
+        <motion.div className="section-intro" {...enter()}>
           <p>How it works</p>
 
           <h2>
@@ -171,10 +202,10 @@ export function LandingPage({
             Beam creates a temporary private space for the exchange,
             then gets out of the way.
           </span>
-        </div>
+        </motion.div>
 
-        <div className="process">
-          <article>
+        <motion.div className="process" {...enter(0.08)}>
+          <motion.article whileHover={reduceMotion ? undefined : { y: -4 }} transition={{ duration: 0.2 }}>
             <b>01</b>
 
             <h3>Start a Beam</h3>
@@ -183,9 +214,9 @@ export function LandingPage({
               Create a private room in one tap. You get a short code
               that is easy to share.
             </p>
-          </article>
+          </motion.article>
 
-          <article>
+          <motion.article whileHover={reduceMotion ? undefined : { y: -4 }} transition={{ duration: 0.2 }}>
             <b>02</b>
 
             <h3>Meet in the same room</h3>
@@ -194,9 +225,9 @@ export function LandingPage({
               The other person joins with your code—on any modern
               browser, on any device.
             </p>
-          </article>
+          </motion.article>
 
-          <article>
+          <motion.article whileHover={reduceMotion ? undefined : { y: -4 }} transition={{ duration: 0.2 }}>
             <b>03</b>
 
             <h3>Send it directly</h3>
@@ -205,11 +236,11 @@ export function LandingPage({
               Your file, note, or link goes straight between browsers.
               Nothing is stored on our servers.
             </p>
-          </article>
-        </div>
+          </motion.article>
+        </motion.div>
       </section>
 
-      <section className="closing">
+      <section className="closing" data-nav-contrast="light">
         <h2>
           Send it fast.
           <br />
@@ -226,7 +257,7 @@ export function LandingPage({
       </section>
 
       <section className="technical" id="technical">
-        <div className="technical__intro">
+        <motion.div className="technical__intro" {...enter()}>
           <h2>Private by the shape of the system.</h2>
 
           <p>
@@ -234,36 +265,36 @@ export function LandingPage({
             Beam account, file store, room directory, or session history to
             keep.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="transfer-path" aria-label="How a Beam connection works">
-          <div className="transfer-path__step">
+        <motion.div className="transfer-path" aria-label="How a Beam connection works" {...enter(0.08)}>
+          <motion.div className="transfer-path__step" whileHover={reduceMotion ? undefined : { x: 4 }} transition={{ duration: 0.2 }}>
             <span className="transfer-path__index">01</span>
             <h3>One shared secret</h3>
             <p>
               Your code is normalized and hashed in the browser to create a
               private room identifier.
             </p>
-          </div>
+          </motion.div>
 
-          <div className="transfer-path__step">
+          <motion.div className="transfer-path__step" whileHover={reduceMotion ? undefined : { x: 4 }} transition={{ duration: 0.2 }}>
             <span className="transfer-path__index">02</span>
             <h3>A brief rendezvous</h3>
             <p>
               Public signaling relays help browsers with the same room
               identifier discover one another.
             </p>
-          </div>
+          </motion.div>
 
-          <div className="transfer-path__step">
+          <motion.div className="transfer-path__step" whileHover={reduceMotion ? undefined : { x: 4 }} transition={{ duration: 0.2 }}>
             <span className="transfer-path__index">03</span>
             <h3>A direct data channel</h3>
             <p>
               WebRTC carries your files, text, and links between browsers. The
               shared content is never uploaded to Beam.
             </p>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
         <div className="technical__note">
           <span>Connection note</span>
@@ -275,7 +306,7 @@ export function LandingPage({
         </div>
       </section>
 
-      <footer className="site-footer">
+      <footer className="site-footer" data-nav-contrast="light">
         <a className="site-footer__brand" href="/" aria-label="Beam home">
           <Logo />
         </a>
