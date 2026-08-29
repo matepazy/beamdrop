@@ -11,7 +11,8 @@ import { areAllRecipientsTerminal, createTransferMeter, isRecipientTerminal, PRE
 export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'verification-failed' | 'failed'
 export type FeedItem = { id: string; kind: 'text' | 'link' | 'file' | 'system' | 'canvas'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
 export type CanvasPoint = { x: number; y: number }
-export type CanvasStroke = { id: string; points: CanvasPoint[]; color: string; width: number; author: string }
+export type CanvasShape = 'freehand' | 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'diamond'
+export type CanvasStroke = { id: string; points: CanvasPoint[]; color: string; width: number; author: string; shape?: CanvasShape; fill?: string }
 export type CanvasImage = { id: string; dataUrl: string; x: number; y: number; width: number; height: number; author: string }
 export type CanvasSession = { id: string; name: string; starter: string; createdAt: number; strokes: CanvasStroke[]; images: CanvasImage[] }
 export type CanvasTraffic = { sent: number; received: number }
@@ -33,6 +34,7 @@ type CanvasMessage =
   | { type: 'rename'; canvasId: string; name: string }
   | { type: 'stroke'; canvasId: string; stroke: CanvasStroke }
   | { type: 'image'; canvasId: string; image: CanvasImage }
+  | { type: 'delete'; canvasId: string; id: string }
 const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', TYPING = 'beam-typing-v1', CANVAS = 'beam-canvas-v1', NOT_FOUND_TIMEOUT = 8_000, TYPING_TIMEOUT = 3_500, TYPING_REFRESH_INTERVAL = 1_500
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const canvasMessageBytes = (message: CanvasMessage) => new TextEncoder().encode(JSON.stringify(message)).byteLength
@@ -156,12 +158,15 @@ export function useBeam(secret: string | null, _password: string, displayName: s
               if (!current || current.id !== message.canvasId) return current
               const index = current.strokes.findIndex(stroke => stroke.id === message.stroke.id)
               if (index < 0) return { ...current, strokes: [...current.strokes, message.stroke] }
-              if (current.strokes[index].points.length >= message.stroke.points.length) return current
+              if (current.strokes[index].points.length > message.stroke.points.length) return current
               return { ...current, strokes: current.strokes.map((stroke, candidate) => candidate === index ? message.stroke : stroke) }
             })
           } else if (message.type === 'image' && canvasRef.current?.id === message.canvasId && message.image && typeof message.image.id === 'string' && typeof message.image.dataUrl === 'string' && message.image.dataUrl.length <= 1_400_000) {
             setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
             setCanvas(current => current && current.id === message.canvasId && !current.images.some(image => image.id === message.image.id) ? { ...current, images: [...current.images, message.image] } : current)
+          } else if (message.type === 'delete' && canvasRef.current?.id === message.canvasId && typeof message.id === 'string' && message.id.length <= 128) {
+            setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
+            setCanvas(current => current?.id === message.canvasId ? { ...current, strokes: current.strokes.filter(stroke => stroke.id !== message.id), images: current.images.filter(image => image.id !== message.id) } : current)
           }
         }
         const clearTypingPeer = (peerId: string) => { const timer = typingTimers.current.get(peerId); if (timer) window.clearTimeout(timer); typingTimers.current.delete(peerId); setTypingPeerIds(current => current.filter(id => id !== peerId)) }
@@ -279,9 +284,10 @@ export function useBeam(secret: string | null, _password: string, displayName: s
     setFeed(items => items.map(item => item.id === `canvas:${current.id}` ? { ...item, value: name } : item))
     void canvasSendRef.current?.({ type: 'rename', canvasId: current.id, name })
   }, [])
-  const addCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length < stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
+  const addCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length <= stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeerIds, setTyping, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, addCanvasImage, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeerIds, setTyping, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }

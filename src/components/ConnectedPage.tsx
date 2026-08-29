@@ -642,7 +642,7 @@ export function ConnectedPage({
 
       <AnimatePresence>
         {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} displayName={displayName} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} />
+          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} displayName={displayName} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} onDelete={beam.deleteCanvasElement} />
         </motion.div>}
         {canvasWarning && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <section className="canvas-warning" role="dialog" aria-modal="true" aria-labelledby="canvas-warning-title">
