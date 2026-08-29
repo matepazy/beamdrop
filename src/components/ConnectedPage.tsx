@@ -39,6 +39,7 @@ export function ConnectedPage({
   const [diagnostics, setDiagnostics] = useState<RtcDiagnostics[]>([])
   const [diagnosticsUpdatedAt, setDiagnosticsUpdatedAt] = useState<number | null>(null)
   const [passwordDraft, setPasswordDraft] = useState('')
+  const [nameDraft, setNameDraft] = useState(displayName)
   const [copied, setCopied] = useState(false)
   const [composer, setComposer] = useState('')
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
@@ -82,6 +83,10 @@ export function ConnectedPage({
       resizeComposer(composerInput.current)
     }
   }, [composer])
+
+  useEffect(() => {
+    setNameDraft(displayName)
+  }, [displayName])
 
   useEffect(() => {
     if (!attachmentsOpen) return
@@ -179,6 +184,17 @@ export function ConnectedPage({
     setCopied(true)
 
     setTimeout(() => setCopied(false), 1600)
+  }
+
+  const commitName = () => {
+    const nextName = nameDraft.trim()
+    if (!nextName) {
+      setNameDraft(displayName)
+      return
+    }
+    if (nextName === displayName) return
+    onRename(nextName)
+    beam.rename(nextName)
   }
 
   const openComposer = (mode: 'text' | 'location') => {
@@ -390,12 +406,17 @@ export function ConnectedPage({
             You’re{' '}
             <input
               aria-label="Your display name"
-              value={displayName}
-              onChange={(event) =>
-                onRename(
-                  event.target.value.slice(0, 48),
-                )
-              }
+              value={nameDraft}
+              maxLength={48}
+              onChange={(event) => setNameDraft(event.target.value)}
+              onBlur={commitName}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+                if (event.key === 'Escape') {
+                  setNameDraft(displayName)
+                  event.currentTarget.blur()
+                }
+              }}
             />
           </label>
         </div>
@@ -915,12 +936,21 @@ function FeedCard({
 }: {
   item: FeedItem
 }) {
+  const timestamp = formatMessageTime(item.createdAt)
+
+  if (item.kind === 'system') {
+    return (
+      <article className="system-event" title={timestamp} aria-label={`${item.value} ${timestamp}`}>
+        <span>{item.value}</span>
+        <time dateTime={new Date(item.createdAt).toISOString()}>{timestamp}</time>
+      </article>
+    )
+  }
+
   const location =
     item.kind === 'link'
       ? locationFromUrl(item.value)
       : null
-
-  const timestamp = formatMessageTime(item.createdAt)
 
   return (
     <div className={`message-stack ${item.received ? 'message-stack--received' : 'message-stack--sent'}`}>

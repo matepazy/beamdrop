@@ -12,7 +12,18 @@ export type SharedText = { v: 2; type: 'item'; item: { id: string; kind: 'text' 
 export type FileOffer = { v: 2; type: 'file-offer'; transferId: string; name: string; size: number; mimeType: string; totalChunks: number }
 export type FileReply = { v: 2; type: 'file-accept' | 'file-decline' | 'file-cancel' | 'file-complete'; transferId: string }
 export type KickNotice = { v: 2; type: 'kick-notice' }
-export type BeamMessage = PeerHello | SharedText | FileOffer | FileReply | KickNotice
+export type SystemEvent = {
+  v: 2
+  type: 'system-event'
+  id: string
+  event: 'nickname-changed' | 'setting-changed'
+  createdAt: number
+  previousName?: string
+  nextName?: string
+  setting?: 'free-for-all'
+  enabled?: boolean
+}
+export type BeamMessage = PeerHello | SharedText | FileOffer | FileReply | KickNotice | SystemEvent
 const string = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f]/.test(value)
 const id = (value: unknown) => typeof value === 'string' && string(value, 128) && /^[A-Za-z0-9_-]+$/.test(value)
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
@@ -26,6 +37,10 @@ export function parseMessage(input: unknown): BeamMessage | null {
   try { if (new TextEncoder().encode(JSON.stringify(message)).byteLength > MAX_CONTROL_BYTES) return null } catch { return null }
   if (message.type === 'hello' && string(message.name, 48) && ['phone', 'tablet', 'computer'].includes(String(message.deviceType))) return message as PeerHello
   if (message.type === 'kick-notice') return message as KickNotice
+  if (message.type === 'system-event' && id(message.id) && finite(message.createdAt) && (message.createdAt as number) > 0) {
+    if (message.event === 'nickname-changed' && string(message.previousName, 48) && string(message.nextName, 48)) return message as SystemEvent
+    if (message.event === 'setting-changed' && message.setting === 'free-for-all' && typeof message.enabled === 'boolean') return message as SystemEvent
+  }
   if (message.type === 'item' && message.item && typeof message.item === 'object') { const item = message.item as Record<string, unknown>; if (id(item.id) && (item.kind === 'text' || item.kind === 'link') && string(item.value, 8_000) && finite(item.createdAt) && (item.createdAt as number) > 0 && (item.kind !== 'link' || isSafeHttpUrl(item.value))) return message as SharedText }
   if (message.type === 'file-offer' && id(message.transferId) && fileName(message.name) && mimeType(message.mimeType) && finite(message.size) && Number.isSafeInteger(message.size) && (message.size as number) >= 0 && (message.size as number) <= MAX_FILE_SIZE && Number.isSafeInteger(message.totalChunks) && message.totalChunks === totalChunksFor(message.size as number)) return message as FileOffer
   if (['file-accept', 'file-decline', 'file-cancel', 'file-complete'].includes(message.type) && id(message.transferId)) return message as FileReply

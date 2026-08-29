@@ -2504,6 +2504,31 @@ a:focus-visible {
   color: #151515;
 }
 
+.system-event {
+  align-self: center;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  max-width: min(100%, 520px);
+  padding: 4px 10px;
+  color: #62625e;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.system-event time {
+  color: #85857f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .conversation .feed-item a,
 .conversation .feed-item button {
   font-weight: 800;
