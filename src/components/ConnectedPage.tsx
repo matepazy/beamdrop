@@ -48,6 +48,8 @@ export function ConnectedPage({
   const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
+  const [canvasCreateOpen, setCanvasCreateOpen] = useState(false)
+  const [canvasName, setCanvasName] = useState('Untitled canvas')
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -389,14 +391,21 @@ export function ConnectedPage({
   }
 
   const openCanvas = (action: 'start' | 'join') => {
+    if (action === 'start') { setCanvasName('Untitled canvas'); setCanvasCreateOpen(true); return }
     if (canvasCondition) { setCanvasWarning(action); return }
-    if (action === 'start') beam.startCanvas()
-    else beam.joinCanvas()
+    beam.joinCanvas()
+    setCanvasOpen(true)
+  }
+  const beginCanvas = () => {
+    if (!canvasName.trim()) return
+    setCanvasCreateOpen(false)
+    if (canvasCondition) { setCanvasWarning('start'); return }
+    beam.startCanvas(canvasName)
     setCanvasOpen(true)
   }
   const confirmCanvas = () => {
     if (!canvasWarning) return
-    if (canvasWarning === 'start') beam.startCanvas()
+    if (canvasWarning === 'start') beam.startCanvas(canvasName)
     else beam.joinCanvas()
     setCanvasWarning(null)
     setCanvasOpen(true)
@@ -510,7 +519,7 @@ export function ConnectedPage({
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
-            ) : <FeedCard key={entry.item.id} item={entry.item} onCanvasJoin={entry.item.id.startsWith('canvas:') ? () => openCanvas('join') : undefined} />)}
+            ) : <FeedCard key={entry.item.id} item={entry.item} onCanvasJoin={entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
                 {beam.pendingPeers.map((peer) => (
@@ -621,6 +630,15 @@ export function ConnectedPage({
       )}
 
       <AnimatePresence>
+        {canvasCreateOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <section className="canvas-warning canvas-create" role="dialog" aria-modal="true" aria-labelledby="canvas-create-title">
+            <Paintbrush size={24} aria-hidden="true" />
+            <h2 id="canvas-create-title">Name your canvas</h2>
+            <p>Give everyone a clear reason to join.</p>
+            <label>Canvas name<input autoFocus value={canvasName} maxLength={80} onChange={event => setCanvasName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') beginCanvas() }} /></label>
+            <div><button type="button" className="quiet-button" onClick={() => setCanvasCreateOpen(false)}>Cancel</button><button type="button" className="primary" onClick={beginCanvas} disabled={!canvasName.trim()}>Start canvas</button></div>
+          </section>
+        </motion.div>}
         {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <CanvasBoard canvas={beam.canvas} displayName={displayName} onClose={() => setCanvasOpen(false)} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} />
         </motion.div>}
@@ -986,6 +1004,16 @@ function FeedCard({
         <time dateTime={new Date(item.createdAt).toISOString()}>{timestamp}</time>
       </article>
     )
+  }
+
+  if (item.kind === 'canvas') {
+    return <div className={`message-stack ${item.received ? 'message-stack--received' : 'message-stack--sent'}`}>
+      {item.received && <span className="message-sender">{item.sender}</span>}
+      <article className={`feed-item feed-item--canvas ${item.received ? 'received-message' : 'sent-message'}`}>
+        <div><span className="feed-item--canvas__icon"><Paintbrush size={17} /></span><strong>{item.value}</strong><span>{item.received ? `${item.sender} started a canvas` : 'You started a canvas'}</span></div>
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}>Join canvas</button>}
+      </article>
+    </div>
   }
 
   const location =

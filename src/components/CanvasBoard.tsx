@@ -19,6 +19,8 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
   const activeStroke = useRef<CanvasPoint[]>([])
   const strokeId = useRef<string | null>(null)
   const lastBroadcast = useRef(0)
+  const knownStrokeLengths = useRef(new Map<string, number>())
+  const labelTimers = useRef(new Map<string, number>())
   const [tool, setTool] = useState<'draw' | 'pan'>('draw')
   const [color, setColor] = useState(colors[0])
   const [width, setWidth] = useState(4)
@@ -27,12 +29,31 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
   const [draft, setDraft] = useState<CanvasPoint[] | null>(null)
   const [dragStart, setDragStart] = useState<{ x: number; y: number; offset: { x: number; y: number } } | null>(null)
   const [status, setStatus] = useState('')
+  const [activeStrokeIds, setActiveStrokeIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    for (const stroke of canvas.strokes) {
+      const previousLength = knownStrokeLengths.current.get(stroke.id) ?? 0
+      knownStrokeLengths.current.set(stroke.id, stroke.points.length)
+      if (stroke.points.length <= previousLength) continue
+      setActiveStrokeIds(current => new Set(current).add(stroke.id))
+      const previousTimer = labelTimers.current.get(stroke.id)
+      if (previousTimer) window.clearTimeout(previousTimer)
+      labelTimers.current.set(stroke.id, window.setTimeout(() => {
+        setActiveStrokeIds(current => { const next = new Set(current); next.delete(stroke.id); return next })
+        labelTimers.current.delete(stroke.id)
+      }, 900))
+    }
+    return () => undefined
+  }, [canvas.strokes])
+
+  useEffect(() => () => { for (const timer of labelTimers.current.values()) window.clearTimeout(timer) }, [])
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
@@ -91,8 +112,7 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
 
   return <section className="canvas-board" aria-label="Collaborative canvas">
     <header className="canvas-board__head">
-      <div><span className="canvas-board__eyebrow">Live canvas</span><strong>{canvas.starter}’s canvas</strong></div>
-      <div className="canvas-board__presence"><i /> {canvas.strokes.length + canvas.images.length} changes shared</div>
+      <div><span className="canvas-board__eyebrow">Live canvas</span><strong>{canvas.name}</strong></div>
       <button type="button" className="canvas-board__close" onClick={onClose} aria-label="Close canvas"><X size={19} /></button>
     </header>
     <div className="canvas-board__tools" role="toolbar" aria-label="Canvas tools">
@@ -100,6 +120,7 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
       <button type="button" className={tool === 'pan' ? 'is-active' : ''} onClick={() => setTool('pan')} aria-pressed={tool === 'pan'}><MousePointer2 size={17} /> Pan</button>
       <span className="canvas-board__separator" />
       {colors.map(value => <button key={value} type="button" className={`canvas-board__color ${color === value ? 'is-active' : ''}`} style={{ '--swatch': value } as React.CSSProperties} onClick={() => setColor(value)} aria-label={`Use ${value} ink`} aria-pressed={color === value} />)}
+      <label className="canvas-board__custom-color" title="Custom ink color"><span>Custom color</span><input type="color" value={color} onChange={event => setColor(event.target.value)} aria-label="Choose custom ink color" /></label>
       <label className="canvas-board__width">Stroke <input aria-label="Stroke width" type="range" min="2" max="14" value={width} onChange={event => setWidth(Number(event.target.value))} /></label>
       <span className="canvas-board__separator" />
       <button type="button" onClick={() => imageInput.current?.click()}><ImagePlus size={17} /> Paste image</button>
@@ -111,7 +132,7 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
       <svg className="canvas-board__drawing" aria-label="Shared drawing surface">
         <g transform={`translate(${offset.x} ${offset.y}) scale(${zoom})`}>
           {canvas.images.map(image => <image key={image.id} href={image.dataUrl} x={image.x} y={image.y} width={image.width} height={image.height} preserveAspectRatio="xMidYMid meet" />)}
-          {shownStrokes.map(stroke => <polyline key={stroke.id} points={stroke.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
+          {shownStrokes.map(stroke => <g key={stroke.id}><polyline points={stroke.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />{(stroke.id === 'draft' || activeStrokeIds.has(stroke.id)) && stroke.points.length > 0 && <text className="canvas-stroke-label" x={stroke.points.at(-1)!.x + 9} y={stroke.points.at(-1)!.y - 8}>{stroke.author}</text>}</g>)}
         </g>
       </svg>
       {!canvas.strokes.length && !canvas.images.length && <div className="canvas-board__hint"><Pencil size={22} /><strong>Start sketching together</strong><span>Drag to draw. Switch to Pan to explore the endless surface.</span></div>}

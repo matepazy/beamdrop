@@ -9,11 +9,11 @@ import { getRoomDiagnostics, type RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { areAllRecipientsTerminal, createTransferMeter, isRecipientTerminal, PREPARED_CHUNK_COUNT, shouldReportProgress, type OutgoingTransfer } from '../lib/transfer'
 
 export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'verification-failed' | 'failed'
-export type FeedItem = { id: string; kind: 'text' | 'link' | 'file' | 'system'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
+export type FeedItem = { id: string; kind: 'text' | 'link' | 'file' | 'system' | 'canvas'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
 export type CanvasPoint = { x: number; y: number }
 export type CanvasStroke = { id: string; points: CanvasPoint[]; color: string; width: number; author: string }
 export type CanvasImage = { id: string; dataUrl: string; x: number; y: number; width: number; height: number; author: string }
-export type CanvasSession = { id: string; starter: string; createdAt: number; strokes: CanvasStroke[]; images: CanvasImage[] }
+export type CanvasSession = { id: string; name: string; starter: string; createdAt: number; strokes: CanvasStroke[]; images: CanvasImage[] }
 export type TransferRecord = { id: string; transferId: string; peerId?: string; name: string; size: number; mimeType: string; sender: string; createdAt: number; direction: 'sending' | 'receiving'; status: 'offered' | 'active' | 'complete' | 'declined' | 'cancelled' | 'interrupted'; progress: number; speed: number; averageSpeed?: number; peakSpeed?: number; elapsedMs?: number; file?: File }
 export type Peer = { id: string; name: string; deviceType: DeviceType }
 type PeerSession = { peerId: string; displayName: string; role: 'creator' | 'member'; status: 'pending' | 'authenticated' | 'connected' | 'disconnected' | 'kicked'; deviceType: DeviceType }
@@ -118,14 +118,14 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         const validCanvas = (value: unknown): value is CanvasSession => {
           if (!value || typeof value !== 'object') return false
           const item = value as CanvasSession
-          return typeof item.id === 'string' && item.id.length <= 128 && typeof item.starter === 'string' && item.starter.length <= 48 && Number.isFinite(item.createdAt) && Array.isArray(item.strokes) && item.strokes.length <= 2000 && Array.isArray(item.images) && item.images.length <= 40
+          return typeof item.id === 'string' && item.id.length <= 128 && typeof item.name === 'string' && item.name.length <= 80 && typeof item.starter === 'string' && item.starter.length <= 48 && Number.isFinite(item.createdAt) && Array.isArray(item.strokes) && item.strokes.length <= 2000 && Array.isArray(item.images) && item.images.length <= 40
         }
         canvasAction.onMessage = (message, { peerId }) => {
           const session = sessions.current.get(peerId)
           if (!session || session.status !== 'connected' || !message || typeof message !== 'object') return
           if (message.type === 'start' && validCanvas(message.canvas)) {
             setCanvas(current => current?.id === message.canvas.id ? current : message.canvas)
-            addSystemEntry(`canvas:${message.canvas.id}`, `${peerName(peerId)} started a canvas.`, message.canvas.createdAt)
+            setFeed(current => current.some(item => item.id === `canvas:${message.canvas.id}`) ? current : [{ id: `canvas:${message.canvas.id}`, kind: 'canvas', value: message.canvas.name, sender: peerName(peerId), createdAt: message.canvas.createdAt, received: true }, ...current])
           } else if (message.type === 'sync-request' && canvasRef.current?.id === message.canvasId) {
             void canvasSendRef.current?.({ type: 'sync', canvas: canvasRef.current }, peerId)
           } else if (message.type === 'sync' && validCanvas(message.canvas)) {
@@ -241,13 +241,13 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const admitPeer = useCallback((peerId: string) => admitPeerRef.current(peerId), [])
   const rename = useCallback((nextName: string) => { const previousName = nameRef.current; if (!nextName || nextName === previousName) return; nameRef.current = nextName; const event = { v: 2, type: 'system-event', id: uid(), event: 'nickname-changed', previousName, nextName, createdAt: Date.now() } as const; void send(event); addSystemEntry(event.id, `You changed your nickname to ${nextName}.`, event.createdAt); sendHelloRef.current() }, [addSystemEntry, send])
   const setFreeForAll = useCallback((enabled: boolean) => { if (!isCreator || enabled === freeForAllRef.current) return; freeForAllRef.current = enabled; setFreeForAllState(enabled); const event = { v: 2, type: 'system-event', id: uid(), event: 'setting-changed', setting: 'free-for-all', enabled, createdAt: Date.now() } as const; void send(event); addSystemEntry(event.id, `You changed the setting: Free for all ${enabled ? 'enabled' : 'disabled'}.`, event.createdAt) }, [addSystemEntry, isCreator, send])
-  const startCanvas = useCallback(() => {
+  const startCanvas = useCallback((name: string) => {
     if (canvasRef.current) return canvasRef.current.id
-    const next: CanvasSession = { id: uid(), starter: nameRef.current, createdAt: Date.now(), strokes: [], images: [] }
-    setCanvas(next); addSystemEntry(`canvas:${next.id}`, 'You started a canvas.', next.createdAt)
+    const next: CanvasSession = { id: uid(), name: name.trim().slice(0, 80) || 'Untitled canvas', starter: nameRef.current, createdAt: Date.now(), strokes: [], images: [] }
+    setCanvas(next); setFeed(current => [{ id: `canvas:${next.id}`, kind: 'canvas', value: next.name, sender: 'You', createdAt: next.createdAt }, ...current])
     void canvasSendRef.current?.({ type: 'start', canvas: next })
     return next.id
-  }, [addSystemEntry])
+  }, [])
   const joinCanvas = useCallback(() => { if (canvasRef.current) void canvasSendRef.current?.({ type: 'sync-request', canvasId: canvasRef.current.id }) }, [])
   const addCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length < stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
