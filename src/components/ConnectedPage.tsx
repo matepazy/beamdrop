@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, FileText, LockKeyhole, LogOut, MapPin, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -33,6 +33,7 @@ export function ConnectedPage({
 
   const [qrOpen, setQrOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [roomCodeVisible, setRoomCodeVisible] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
   const [diagnostics, setDiagnostics] = useState<RtcDiagnostics[]>([])
   const [diagnosticsUpdatedAt, setDiagnosticsUpdatedAt] = useState<number | null>(null)
@@ -392,6 +393,7 @@ export function ConnectedPage({
           type="button"
           onClick={() => {
             setPasswordDraft('')
+            setRoomCodeVisible(false)
             setSettingsOpen(true)
           }}
           aria-label="Beam settings"
@@ -605,6 +607,26 @@ export function ConnectedPage({
                 <div><Settings size={19} /><h2 id="beam-settings-title">Beam settings</h2></div>
                 <button type="button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={18} /></button>
               </div>
+
+              <section className="settings-dialog__section settings-dialog__room-code" aria-labelledby="room-code-title">
+                <div>
+                  <strong id="room-code-title">Room code</strong>
+                  <p>Keep this code private. Anyone with it can try to join this Beam.</p>
+                </div>
+                <div className="settings-dialog__room-code-value">
+                  <code className={roomCodeVisible ? '' : 'is-blurred'}>{secret}</code>
+                  <button
+                    className="quiet-button"
+                    type="button"
+                    onClick={() => setRoomCodeVisible((visible) => !visible)}
+                    aria-pressed={roomCodeVisible}
+                    aria-label={roomCodeVisible ? 'Hide room code' : 'Show room code'}
+                  >
+                    {roomCodeVisible ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                    {roomCodeVisible ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </section>
 
               {isCreator ? (
                 <>
