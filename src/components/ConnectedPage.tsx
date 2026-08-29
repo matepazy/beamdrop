@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -10,6 +10,7 @@ import { connectionHealth } from '../lib/rtcDiagnostics'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
+import { CanvasBoard } from './CanvasBoard'
 
 const PASSWORD_FEATURE_ENABLED = false
 
@@ -45,6 +46,8 @@ export function ConnectedPage({
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [participantsExpanded, setParticipantsExpanded] = useState(false)
   const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
+  const [canvasOpen, setCanvasOpen] = useState(false)
+  const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -65,6 +68,11 @@ export function ConnectedPage({
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
+  const canvasCondition = beam.peers.length + 1 > 4
+    ? 'More than four people are in this Beam. Canvas updates may feel less responsive.'
+    : health.tone !== 'good'
+      ? `${health.label}. Canvas is best on a stable, direct connection.`
+      : null
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
@@ -380,6 +388,20 @@ export function ConnectedPage({
     beam.replyToOffer(transfer.id, true)
   }
 
+  const openCanvas = (action: 'start' | 'join') => {
+    if (canvasCondition) { setCanvasWarning(action); return }
+    if (action === 'start') beam.startCanvas()
+    else beam.joinCanvas()
+    setCanvasOpen(true)
+  }
+  const confirmCanvas = () => {
+    if (!canvasWarning) return
+    if (canvasWarning === 'start') beam.startCanvas()
+    else beam.joinCanvas()
+    setCanvasWarning(null)
+    setCanvasOpen(true)
+  }
+
   return (
     <motion.section
       className="room"
@@ -488,7 +510,7 @@ export function ConnectedPage({
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
-            ) : <FeedCard key={entry.item.id} item={entry.item} />)}
+            ) : <FeedCard key={entry.item.id} item={entry.item} onCanvasJoin={entry.item.id.startsWith('canvas:') ? () => openCanvas('join') : undefined} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
                 {beam.pendingPeers.map((peer) => (
@@ -558,6 +580,7 @@ export function ConnectedPage({
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
               </div>}
             </div>
             <textarea
@@ -596,6 +619,21 @@ export function ConnectedPage({
           {shareStatus}
         </p>
       )}
+
+      <AnimatePresence>
+        {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <CanvasBoard canvas={beam.canvas} displayName={displayName} onClose={() => setCanvasOpen(false)} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} />
+        </motion.div>}
+        {canvasWarning && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <section className="canvas-warning" role="dialog" aria-modal="true" aria-labelledby="canvas-warning-title">
+            <Paintbrush size={24} aria-hidden="true" />
+            <h2 id="canvas-warning-title">Canvas may be slower here</h2>
+            <p>{canvasCondition}</p>
+            <p className="canvas-warning__note">Drawing stays end-to-end encrypted. Images are compressed before they are shared.</p>
+            <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
+          </section>
+        </motion.div>}
+      </AnimatePresence>
 
       <AnimatePresence>
         {pendingDangerousFile && (
@@ -933,15 +971,18 @@ function TransferCard({
 
 function FeedCard({
   item,
+  onCanvasJoin,
 }: {
   item: FeedItem
+  onCanvasJoin?: () => void
 }) {
   const timestamp = formatMessageTime(item.createdAt)
 
   if (item.kind === 'system') {
     return (
-      <article className="system-event" title={timestamp} aria-label={`${item.value} ${timestamp}`}>
+      <article className={`system-event ${onCanvasJoin ? 'system-event--canvas' : ''}`} title={timestamp} aria-label={`${item.value} ${timestamp}`}>
         <span>{item.value}</span>
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}><Paintbrush size={15} /> Join canvas</button>}
         <time dateTime={new Date(item.createdAt).toISOString()}>{timestamp}</time>
       </article>
     )
