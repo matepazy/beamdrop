@@ -41,11 +41,7 @@ export function App() {
   const [view, setView] = useState<View>(route)
   const [launching, setLaunching] = useState(false)
 
-  const [displayName, setDisplayName] = useState(
-    () =>
-      localStorage.getItem('beam:display-name') ||
-      defaultDisplayName(),
-  )
+  const [displayName, setDisplayName] = useState(defaultDisplayName)
 
   const [online, setOnline] = useState(navigator.onLine)
 
@@ -138,14 +134,16 @@ export function App() {
           <InfoPage key={view.page} page={view.page} />
         ) : (
           <ConnectedPage
-            key={view.secret}
+            // A password submission must create a fresh Trystero handshake.
+            // Keeping only the room code as the key left the rejected room
+            // mounted and made the password form appear to do nothing.
+            key={`${view.secret}:${view.password}`}
             secret={view.secret}
             password={view.password}
             isCreator={view.isCreator}
             displayName={displayName}
             onRename={(name) => {
               setDisplayName(name)
-              localStorage.setItem('beam:display-name', name)
             }}
             onEnd={() => go({ mode: 'home' })}
             onPasswordChange={(password) =>
@@ -240,9 +238,9 @@ function Guidelines() {
 function PrivacyPolicy() {
   return <div className="info-page__reading">
     <article className="info-page__article">
-      <PolicySection id="basics" title="The basics" icon={<ShieldCheck size={18} />}><p>The data controller for the official hosted Beam site is the BeamDrop Project Operator. For privacy or data-rights requests, write to <a href="mailto:contact@beamdrop.link">contact@beamdrop.link</a>. Please do not include a Beam secret, password, or shared content. No data-protection officer has been appointed.</p><p>Beam has no accounts or user profiles. It does not collect email addresses, use advertising cookies, run analytics, or store shared files, notes, links, clipboard contents, locations, Beam secrets, or session history. Content moves between participating browsers, not through a Beam content server.</p><p>If you choose a display name, it is saved only in your browser’s local storage so the app can reuse it on that device. It is not transmitted to the project operator and can be removed by clearing the site’s storage.</p></PolicySection>
+      <PolicySection id="basics" title="The basics" icon={<ShieldCheck size={18} />}><p>The data controller for the official hosted Beam site is the BeamDrop Project Operator. For privacy or data-rights requests, write to <a href="mailto:contact@beamdrop.link">contact@beamdrop.link</a>. Please do not include a Beam secret, password, or shared content. No data-protection officer has been appointed.</p><p>Beam has no accounts or user profiles. It does not collect email addresses, use advertising cookies, run analytics, or store shared files, notes, links, clipboard contents, locations, Beam secrets, session history, or display names. Content moves between participating browsers, not through a Beam content server.</p><p>Your display name is held only for the current Beam in browser memory. It is not transmitted to the project operator or retained after the page is closed.</p></PolicySection>
       <PolicySection id="providers" title="Providers you may connect to" icon={<Network size={18} />}><p>These providers support the official deployment or a feature you choose to use. They may receive the information needed to provide their service, usually IP address, browser or device details, requested resource, time, and network or security metadata.</p><Provider name="Vercel" detail="Hosts and delivers the official static site." privacy="https://vercel.com/legal/privacy-notice" terms="https://vercel.com/legal/terms" /><Provider name="Cloudflare" detail="Provides domain, DNS, and web-network services for the official domain." privacy="https://www.cloudflare.com/policies/privacy/" terms="https://www.cloudflare.com/policies/terms/" /><Provider name="Porkbun" detail="Registers the beamdrop.link domain." privacy="https://porkbun.com/legal/agreement/privacy_policy" terms="https://porkbun.com/legal/agreement/product_terms_of_service" /><Provider name="Google STUN" detail="Helps establish WebRTC connections through stun.l.google.com:19302." privacy="https://policies.google.com/privacy" terms="https://www.about.google/policies/terms/" /><Provider name="Public Nostr relays" detail="Provide peer discovery through Trystero’s Nostr adapter. Nostr is decentralised and Beam does not control these relays. Each relay can publish its own terms under NIP-11; it receives a hashed room identifier and connection metadata, not the readable Beam secret." privacy="https://nips.nostr.com/11" terms="https://nips.nostr.com/11" /><Provider name="OpenStreetMap" detail="Supplies map tiles only when a map is shown or a location is composed." privacy="https://osmfoundation.org/wiki/Privacy_Policy" terms="https://operations.osmfoundation.org/policies/tiles/" /><p>GitHub and the project operator’s website are optional external links; they are contacted only if you open them. See <a href="https://docs.github.com/en/site-policy/privacy-policies" target="_blank" rel="noreferrer">GitHub Privacy</a> and <a href="https://docs.github.com/en/site-policy/github-terms/github-terms-of-service" target="_blank" rel="noreferrer">GitHub Terms</a>.</p></PolicySection>
-      <PolicySection id="rights" title="Your data rights" icon={<LockKeyhole size={18} />}><p>Where the project operator processes limited hosting or security data, the legal basis is the legitimate interest in delivering and protecting the official site (GDPR Article 6(1)(f)). The optional local display-name preference is stored at your direction. Beam does not make automated decisions about you or sell personal data for marketing.</p><p>Subject to the GDPR and applicable limits, you may request access, correction, erasure, restriction, portability, or object to processing based on legitimate interests. You may also complain to your local data-protection authority. Beam usually cannot identify you or retrieve a particular Beam because it keeps no account or content record.</p><p>Network, relay, map, DNS, registrar, and hosting providers set their own retention and may process data outside the EEA; consult their linked notices. A self-hosted copy may use different providers. Any deployment that enables an optional TURN credential endpoint or TURN relay must disclose that provider before use.</p><p>Beam is not designed to collect children’s personal data. We may update this notice when the app, hosting, or providers change.</p></PolicySection>
+      <PolicySection id="rights" title="Your data rights" icon={<LockKeyhole size={18} />}><p>Where the project operator processes limited hosting or security data, the legal basis is the legitimate interest in delivering and protecting the official site (GDPR Article 6(1)(f)). Beam does not make automated decisions about you or sell personal data for marketing.</p><p>Subject to the GDPR and applicable limits, you may request access, correction, erasure, restriction, portability, or object to processing based on legitimate interests. You may also complain to your local data-protection authority. Beam usually cannot identify you or retrieve a particular Beam because it keeps no account or content record.</p><p>Network, relay, map, DNS, registrar, and hosting providers set their own retention and may process data outside the EEA; consult their linked notices. A self-hosted copy may use different providers. Any deployment that enables an optional TURN credential endpoint or TURN relay must disclose that provider before use.</p><p>Beam is not designed to collect children’s personal data. We may update this notice when the app, hosting, or providers change.</p></PolicySection>
     </article>
   </div>
 }

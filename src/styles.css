@@ -2930,6 +2930,51 @@ a:focus-visible {
 .settings-dialog__note { margin-top: 22px; }
 .settings-dialog__metrics { display: none; }
 
+.dangerous-file-dialog {
+  width: min(420px, calc(100vw - 40px));
+  padding: 24px;
+  border-radius: var(--radius-ui);
+  background: #fff;
+  box-shadow: var(--shadow-dialog);
+}
+
+.dangerous-file-dialog__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-ui);
+  background: #fff1e8;
+  color: #9a4c1d;
+}
+
+.dangerous-file-dialog h2 {
+  margin: 16px 0 0;
+  color: #2e2824;
+  font-size: 20px;
+  letter-spacing: -.035em;
+}
+
+.dangerous-file-dialog p {
+  margin: 9px 0 0;
+  overflow-wrap: anywhere;
+  color: #5c544e;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dangerous-file-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.dangerous-file-dialog button:focus-visible {
+  outline: 2px solid #455ef5;
+  outline-offset: 3px;
+}
+
 .participants {
   margin: 22px 0 4px;
   padding: 13px 15px;
@@ -3907,6 +3952,15 @@ a:focus-visible {
     font: inherit;
     font-size: 13px;
     font-weight: 750;
+  }
+
+  .dangerous-file-dialog {
+    width: 100%;
+    padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .dangerous-file-dialog__actions button {
+    min-height: 44px;
   }
 
   .settings-dialog__metrics:hover,

@@ -5,9 +5,12 @@ import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'rea
 import 'leaflet/dist/leaflet.css'
 
 import { formatBytes, hostnameFor, isUrl } from '../lib/format'
+import { isPotentiallyDangerousFile } from '../lib/dangerousFile'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
+
+const PASSWORD_FEATURE_ENABLED = false
 
 export function ConnectedPage({
   secret,
@@ -38,6 +41,7 @@ export function ConnectedPage({
   const [composer, setComposer] = useState('')
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [participantsExpanded, setParticipantsExpanded] = useState(false)
+  const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -54,6 +58,8 @@ export function ConnectedPage({
   const composerInput = useRef<HTMLTextAreaElement>(null)
   const attachmentActionsRef = useRef<HTMLDivElement>(null)
   const conversationRef = useRef<HTMLElement>(null)
+  const dangerousFileDialogRef = useRef<HTMLElement>(null)
+  const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const connected = beam.state === 'connected'
   const activityCount =
     beam.feed.length +
@@ -113,8 +119,52 @@ export function ConnectedPage({
     }
   }, [metricsOpen])
 
-  const recipient =
-    beam.peers[0]?.name ?? 'your other device'
+  useEffect(() => {
+    if (!pendingDangerousFile) return
+
+    const dialog = dangerousFileDialogRef.current
+    const previousFocus = dangerousFileTriggerRef.current
+    const focusable = () => dialog
+      ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      : []
+
+    requestAnimationFrame(() => focusable()[0]?.focus())
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPendingDangerousFile(null)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const controls = focusable()
+      if (!controls.length) return
+      const first = controls[0]
+      const last = controls.at(-1)!
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [pendingDangerousFile])
+
+  const [onlyPeer] = beam.peers
+  const recipient = beam.peers.length === 1
+    ? onlyPeer?.name ?? 'this Beam'
+    : beam.peers.length > 1
+      ? `${beam.peers.length} people in this Beam`
+      : 'this Beam'
 
   const copy = async (value: string) => {
     await navigator.clipboard.writeText(value)
@@ -285,6 +335,18 @@ export function ConnectedPage({
     clearComposer()
   }
 
+  const acceptFile = (transfer: TransferRecord) => {
+    if (isPotentiallyDangerousFile(transfer.name)) {
+      dangerousFileTriggerRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+      setPendingDangerousFile(transfer)
+      return
+    }
+
+    beam.replyToOffer(transfer.id, true)
+  }
+
   return (
     <motion.section
       className="room"
@@ -373,7 +435,7 @@ export function ConnectedPage({
         {hasActivity || beam.pendingPeers.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
-              <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
+              <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
             ) : <FeedCard key={entry.item.id} item={entry.item} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
@@ -475,12 +537,46 @@ export function ConnectedPage({
       )}
 
       <AnimatePresence>
+        {pendingDangerousFile && (
+          <motion.div
+            className="dialog-backdrop"
+            role="presentation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={() => setPendingDangerousFile(null)}
+          >
+            <motion.section
+              ref={dangerousFileDialogRef}
+              className="dangerous-file-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="dangerous-file-title"
+              aria-describedby="dangerous-file-description"
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="dangerous-file-dialog__icon"><FileText size={20} aria-hidden="true" /></div>
+              <h2 id="dangerous-file-title">This file could be unsafe</h2>
+              <p id="dangerous-file-description"><strong>{pendingDangerousFile.name}</strong> can contain executable or malicious code. Only accept it if you trust the sender and were expecting it.</p>
+              <div className="dangerous-file-dialog__actions">
+                <button className="quiet-button" type="button" onClick={() => setPendingDangerousFile(null)}>Cancel</button>
+                <button className="primary small" type="button" onClick={() => {
+                  beam.replyToOffer(pendingDangerousFile.id, true)
+                  setPendingDangerousFile(null)
+                }}>Accept anyway</button>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
         {metricsOpen && (
           <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setMetricsOpen(false)}>
             <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
               <div className="metrics-dialog__head"><div><Activity size={19} /><div><h2 id="beam-metrics-title">Technical metrics</h2></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close technical metrics"><X size={18} /></button></div>
               <div className="metrics-dialog__privacy"><LockKeyhole size={15} /> Candidate addresses are never shown.</div>
-              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers[index]?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
+              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers.find(peer => peer.id === diagnostic.peerId)?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
               <section className="metrics-transfers"><h3>Transfer telemetry</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No file transfers in this Beam yet.</p>}</section>
               <p className="metrics-dialog__updated"><RefreshCw size={13} /> Updates every 2 seconds{diagnosticsUpdatedAt ? ` · checked ${new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(diagnosticsUpdatedAt)}` : ''}</p>
             </motion.section>
@@ -512,7 +608,7 @@ export function ConnectedPage({
 
               {isCreator ? (
                 <>
-                  <form className="settings-dialog__section" onSubmit={(event) => {
+                  {PASSWORD_FEATURE_ENABLED && <form className="settings-dialog__section" onSubmit={(event) => {
                     event.preventDefault()
                     onPasswordChange(passwordDraft)
                     setSettingsOpen(false)
@@ -520,7 +616,9 @@ export function ConnectedPage({
                     <div><strong>Password</strong><p>Changes apply to new joiners only. People already connected stay in this Beam.</p></div>
                     <label htmlFor="settings-password">New password <span>(leave blank to remove)</span></label>
                     <div className="settings-dialog__password"><input id="settings-password" type="password" autoComplete="new-password" value={passwordDraft} onChange={(event) => setPasswordDraft(event.target.value)} placeholder="No password" /><button className="primary" type="submit">Save</button></div>
-                  </form>
+                  </form>}
+
+                  {!PASSWORD_FEATURE_ENABLED && <p className="settings-dialog__note">Password protection is temporarily unavailable for this Beam.</p>}
 
                   <div className="settings-dialog__section settings-dialog__toggle">
                     <div><strong>Free for ALL</strong><p>Anyone with the Beam code can join instantly. No approval is needed after the first member joins.</p></div>

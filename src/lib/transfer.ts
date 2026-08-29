@@ -1,6 +1,40 @@
 export const PREPARED_CHUNK_COUNT = 6
 export const PROGRESS_UPDATE_INTERVAL_MS = 100
 
+/**
+ * The sender owns one File and a separate lifecycle for every recipient.  A
+ * transfer may only release its File after every recipient is terminal.
+ */
+export type RecipientTransferStatus =
+  | 'offered'
+  | 'accepted'
+  | 'transferring'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected'
+  | 'failed'
+
+export type RecipientTransferState = {
+  peerId: string
+  status: RecipientTransferStatus
+  bytesSent: number
+  abortController?: AbortController
+}
+
+export type OutgoingTransfer = {
+  id: string
+  file: File
+  recipients: Map<string, RecipientTransferState>
+}
+
+export const isRecipientTerminal = (status: RecipientTransferStatus) =>
+  ['completed', 'cancelled', 'rejected', 'failed'].includes(status)
+
+export const areAllRecipientsTerminal = (transfer: OutgoingTransfer) =>
+  [...transfer.recipients.values()].every(recipient =>
+    isRecipientTerminal(recipient.status),
+  )
+
 export type TransferMeasurement = {
   bytes: number
   elapsedMs: number

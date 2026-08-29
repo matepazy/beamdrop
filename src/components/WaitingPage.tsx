@@ -3,6 +3,8 @@ import { Check, Copy, LoaderCircle, LockKeyhole, QrCode, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 
+const PASSWORD_FEATURE_ENABLED = false
+
 export function WaitingPage({
   secret,
   state,
@@ -46,7 +48,9 @@ export function WaitingPage({
   }, [password])
 
   const label =
-    state === 'failed'
+    state === 'verification-failed'
+      ? 'Could not verify the other device.'
+      : state === 'failed'
       ? "Couldn't establish a connection."
       : state === 'password-required'
         ? 'This Beam is password protected.'
@@ -111,7 +115,7 @@ export function WaitingPage({
 
         <h1>{secret}</h1>
 
-        {passwordRequired ? (
+        {PASSWORD_FEATURE_ENABLED && passwordRequired ? (
           <form
             className="password-panel"
             onSubmit={(event) => {
@@ -171,7 +175,7 @@ export function WaitingPage({
           </button>
         </div>
 
-        {isCreator && !passwordRequired && (
+        {PASSWORD_FEATURE_ENABLED && isCreator && !passwordRequired && (
           <div className="lock-panel">
             {editingLock ? (
               <form
