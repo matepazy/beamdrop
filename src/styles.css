@@ -3041,6 +3041,30 @@ a:focus-visible {
 .settings-dialog__note { margin-top: 22px; }
 .settings-dialog__metrics { display: none; }
 
+.data-saver-dialog {
+  width: min(440px, calc(100vw - 40px));
+  padding: 24px;
+  border-radius: var(--radius-ui);
+  background: #fff;
+  box-shadow: var(--shadow-dialog);
+}
+
+.data-saver-dialog__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-ui);
+  background: #fff1e8;
+  color: #9a4c1d;
+}
+
+.data-saver-dialog h2 { margin: 16px 0 0; color: #2e2824; font-size: 20px; letter-spacing: -.035em; }
+.data-saver-dialog p { margin: 9px 0 0; color: #686863; font-size: 14px; line-height: 1.5; }
+.data-saver-dialog ul { margin: 16px 0 0; padding-left: 20px; color: #454540; font-size: 13px; line-height: 1.55; }
+.data-saver-dialog li + li { margin-top: 5px; }
+.data-saver-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+
 .dangerous-file-dialog {
   width: min(420px, calc(100vw - 40px));
   padding: 24px;

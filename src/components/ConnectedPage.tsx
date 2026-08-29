@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -31,10 +31,12 @@ export function ConnectedPage({
   onEnd(): void
   onPasswordChange(password: string): void
 }) {
-  const beam = useBeam(secret, password, displayName, isCreator)
+  const [dataSaver, setDataSaver] = useState(() => localStorage.getItem('beam-data-saver') === 'true')
+  const beam = useBeam(secret, password, displayName, isCreator, dataSaver)
 
   const [qrOpen, setQrOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [dataSaverWarningOpen, setDataSaverWarningOpen] = useState(false)
   const [roomCodeVisible, setRoomCodeVisible] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
   const [diagnostics, setDiagnostics] = useState<RtcDiagnostics[]>([])
@@ -403,7 +405,18 @@ export function ConnectedPage({
     beam.replyToOffer(transfer.id, true)
   }
 
+  const setDataSaverMode = (enabled: boolean) => {
+    localStorage.setItem('beam-data-saver', String(enabled))
+    setDataSaver(enabled)
+    if (enabled) {
+      setAttachmentsOpen(false)
+      setComposerMode('text')
+      setPickedLocation(null)
+    }
+  }
+
   const openCanvas = (action: 'start' | 'join') => {
+    if (dataSaver) return
     if (action === 'start') {
       if (canvasConditions.length) { setCanvasWarning(action); return }
       beam.startCanvas()
@@ -530,7 +543,7 @@ export function ConnectedPage({
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
-            ) : <FeedCard key={entry.item.id} item={entry.item} onCanvasJoin={entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
+            ) : <FeedCard key={entry.item.id} item={entry.item} dataSaver={dataSaver} onCanvasJoin={dataSaver ? undefined : entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
                 {beam.pendingPeers.map((peer) => (
@@ -597,15 +610,16 @@ export function ConnectedPage({
             <div className="attachment-actions" ref={attachmentActionsRef}>
               <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
               {attachmentsOpen && <div className="attachment-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
-                <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
+                {!dataSaver && <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>}
+                {!dataSaver && <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>}
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
-                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
+                {!dataSaver && <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>}
               </div>}
             </div>
             <textarea
               ref={composerInput}
               value={composer}
+              maxLength={dataSaver ? 1_000 : 8_000}
               onChange={(event) => {
                 setComposer(event.target.value)
                 beam.setTyping(event.target.value.trim().length > 0)
@@ -768,7 +782,22 @@ export function ConnectedPage({
               ) : (
                 <p className="settings-dialog__note">Only the person who started this Beam can change its password or joining mode.</p>
               )}
+              <div className="settings-dialog__section settings-dialog__toggle">
+                <div><strong>Data saver</strong><p>{dataSaver ? 'On for this browser only. Beam is using text-only sharing to minimize traffic.' : 'Reduce data use on this browser. This does not change anyone else’s Beam.'}</p></div>
+                <button className={`toggle ${dataSaver ? 'on' : ''}`} type="button" role="switch" aria-checked={dataSaver} onClick={() => dataSaver ? setDataSaverMode(false) : setDataSaverWarningOpen(true)} aria-label="Toggle data saver"><span /></button>
+              </div>
               <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); setMetricsOpen(true) }}><Activity size={17} /> Technical metrics</button>
+            </motion.section>
+          </motion.div>
+        )}
+        {dataSaverWarningOpen && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDataSaverWarningOpen(false)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-title" aria-describedby="data-saver-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><WifiOff size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-title">Turn on data saver?</h2>
+              <p id="data-saver-description">Your Beam experience will be noticeably worse. This setting affects only this browser, not anyone else in the Beam.</p>
+              <ul><li>Turns off typing indicators.</li><li>Disables file sharing and automatically declines files sent to you.</li><li>Disables Canvas, including drawing sync and images.</li><li>Disables location sharing and map previews.</li><li>Limits messages you send or receive from compatible peers to 1,000 characters.</li><li>Asks compatible peers not to send you file, Canvas, or typing traffic.</li></ul>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setDataSaverWarningOpen(false)}>Cancel</button><button className="primary small" type="button" onClick={() => { setDataSaverMode(true); setDataSaverWarningOpen(false) }}>Turn on data saver</button></div>
             </motion.section>
           </motion.div>
         )}
@@ -991,9 +1020,11 @@ function TransferCard({
 
 function FeedCard({
   item,
+  dataSaver,
   onCanvasJoin,
 }: {
   item: FeedItem
+  dataSaver: boolean
   onCanvasJoin?: () => void
 }) {
   const timestamp = formatMessageTime(item.createdAt)
@@ -1042,7 +1073,7 @@ function FeedCard({
               <span className="file-message__size">{formatBytes(item.size)}</span>
             )}
 
-            {location && (
+            {location && !dataSaver && (
               <LocationPreview
                 location={location}
                 href={item.value}
