@@ -5,6 +5,7 @@ import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'rea
 import 'leaflet/dist/leaflet.css'
 
 import { formatBytes, hostnameFor, isUrl } from '../lib/format'
+import { isPotentiallyDangerousFile } from '../lib/dangerousFile'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
@@ -40,6 +41,7 @@ export function ConnectedPage({
   const [composer, setComposer] = useState('')
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [participantsExpanded, setParticipantsExpanded] = useState(false)
+  const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -56,6 +58,8 @@ export function ConnectedPage({
   const composerInput = useRef<HTMLTextAreaElement>(null)
   const attachmentActionsRef = useRef<HTMLDivElement>(null)
   const conversationRef = useRef<HTMLElement>(null)
+  const dangerousFileDialogRef = useRef<HTMLElement>(null)
+  const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const connected = beam.state === 'connected'
   const activityCount =
     beam.feed.length +
@@ -114,6 +118,46 @@ export function ConnectedPage({
       window.clearInterval(interval)
     }
   }, [metricsOpen])
+
+  useEffect(() => {
+    if (!pendingDangerousFile) return
+
+    const dialog = dangerousFileDialogRef.current
+    const previousFocus = dangerousFileTriggerRef.current
+    const focusable = () => dialog
+      ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      : []
+
+    requestAnimationFrame(() => focusable()[0]?.focus())
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPendingDangerousFile(null)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const controls = focusable()
+      if (!controls.length) return
+      const first = controls[0]
+      const last = controls.at(-1)!
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [pendingDangerousFile])
 
   const [onlyPeer] = beam.peers
   const recipient = beam.peers.length === 1
@@ -291,6 +335,18 @@ export function ConnectedPage({
     clearComposer()
   }
 
+  const acceptFile = (transfer: TransferRecord) => {
+    if (isPotentiallyDangerousFile(transfer.name)) {
+      dangerousFileTriggerRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+      setPendingDangerousFile(transfer)
+      return
+    }
+
+    beam.replyToOffer(transfer.id, true)
+  }
+
   return (
     <motion.section
       className="room"
@@ -379,7 +435,7 @@ export function ConnectedPage({
         {hasActivity || beam.pendingPeers.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
-              <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => beam.replyToOffer(entry.transfer.id, true)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
+              <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
             ) : <FeedCard key={entry.item.id} item={entry.item} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
@@ -481,6 +537,40 @@ export function ConnectedPage({
       )}
 
       <AnimatePresence>
+        {pendingDangerousFile && (
+          <motion.div
+            className="dialog-backdrop"
+            role="presentation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={() => setPendingDangerousFile(null)}
+          >
+            <motion.section
+              ref={dangerousFileDialogRef}
+              className="dangerous-file-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="dangerous-file-title"
+              aria-describedby="dangerous-file-description"
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="dangerous-file-dialog__icon"><FileText size={20} aria-hidden="true" /></div>
+              <h2 id="dangerous-file-title">This file could be unsafe</h2>
+              <p id="dangerous-file-description"><strong>{pendingDangerousFile.name}</strong> can contain executable or malicious code. Only accept it if you trust the sender and were expecting it.</p>
+              <div className="dangerous-file-dialog__actions">
+                <button className="quiet-button" type="button" onClick={() => setPendingDangerousFile(null)}>Cancel</button>
+                <button className="primary small" type="button" onClick={() => {
+                  beam.replyToOffer(pendingDangerousFile.id, true)
+                  setPendingDangerousFile(null)
+                }}>Accept anyway</button>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
         {metricsOpen && (
           <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setMetricsOpen(false)}>
             <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
