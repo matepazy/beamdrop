@@ -65,7 +65,8 @@ export function ConnectedPage({
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
-    beam.pendingPeers.length
+    beam.pendingPeers.length +
+    beam.typingPeerIds.length
 
   useLayoutEffect(() => {
     if (connected && conversationRef.current) {
@@ -187,6 +188,7 @@ export function ConnectedPage({
   }
 
   const clearComposer = () => {
+    beam.setTyping(false)
     setComposer('')
     setPickedLocation(null)
     setComposerMode('text')
@@ -290,6 +292,14 @@ export function ConnectedPage({
   const hasActivity =
     beam.transfers.length > 0 ||
     beam.feed.length > 0
+  const typingNames = beam.typingPeerIds
+    .map((peerId) => beam.peers.find((peer) => peer.id === peerId)?.name)
+    .filter((name): name is string => Boolean(name))
+  const typingLabel = typingNames.length === 1
+    ? `${typingNames[0]} is typing`
+    : typingNames.length === 2
+      ? `${typingNames[0]} and ${typingNames[1]} are typing`
+      : `${typingNames.length} people are typing`
 
   const completedReceivedFileIds = new Set(
     beam.feed
@@ -434,7 +444,7 @@ export function ConnectedPage({
       </details>
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
-        {hasActivity || beam.pendingPeers.length > 0 ? (
+        {hasActivity || beam.pendingPeers.length > 0 || typingNames.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
@@ -452,6 +462,12 @@ export function ConnectedPage({
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {typingNames.length > 0 && (
+              <div className="typing-indicator" role="status" aria-live="polite" aria-atomic="true">
+                <span className="typing-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
+                <span>{typingLabel}</span>
               </div>
             )}
           </div>
@@ -509,8 +525,11 @@ export function ConnectedPage({
               value={composer}
               onChange={(event) => {
                 setComposer(event.target.value)
+                beam.setTyping(event.target.value.trim().length > 0)
                 resizeComposer(event.currentTarget)
               }}
+              onBlur={() => beam.setTyping(false)}
+              onFocus={() => beam.setTyping(composer.trim().length > 0)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
