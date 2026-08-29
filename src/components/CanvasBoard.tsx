@@ -1,11 +1,14 @@
-import { ImagePlus, MousePointer2, Pencil, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ImagePlus, MousePointer2, Pencil, PenLine, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { CanvasImage, CanvasPoint, CanvasSession, CanvasStroke } from '../hooks/useBeam'
+import { formatBytes } from '../lib/format'
+import type { CanvasImage, CanvasPoint, CanvasSession, CanvasStroke, CanvasTraffic } from '../hooks/useBeam'
 
 type Props = {
   canvas: CanvasSession
+  traffic: CanvasTraffic
   displayName: string
   onClose(): void
+  onRename(name: string): void
   onStroke(stroke: CanvasStroke): void
   onImage(image: CanvasImage): void
 }
@@ -13,7 +16,7 @@ type Props = {
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${Math.random()}`
 const colors = ['#17191e', '#4459c5', '#d0523b', '#15956a', '#e29a28']
 
-export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }: Props) {
+export function CanvasBoard({ canvas, traffic, displayName, onClose, onRename, onStroke, onImage }: Props) {
   const stage = useRef<HTMLDivElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const activeStroke = useRef<CanvasPoint[]>([])
@@ -30,6 +33,15 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
   const [dragStart, setDragStart] = useState<{ x: number; y: number; offset: { x: number; y: number } } | null>(null)
   const [status, setStatus] = useState('')
   const [activeStrokeIds, setActiveStrokeIds] = useState<Set<string>>(new Set())
+  const [renaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState(canvas.name)
+
+  const canRename = canvas.starter === displayName
+  const saveName = () => {
+    const nextName = nameDraft.trim()
+    if (nextName) onRename(nextName)
+    setRenaming(false)
+  }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -112,8 +124,11 @@ export function CanvasBoard({ canvas, displayName, onClose, onStroke, onImage }:
 
   return <section className="canvas-board" aria-label="Collaborative canvas">
     <header className="canvas-board__head">
-      <div><span className="canvas-board__eyebrow">Live canvas</span><strong>{canvas.name}</strong></div>
-      <button type="button" className="canvas-board__close" onClick={onClose} aria-label="Close canvas"><X size={19} /></button>
+      <div className="canvas-board__title"><span className="canvas-board__eyebrow">Live canvas</span><div className="canvas-board__name-row">{renaming ? <><input aria-label="Canvas name" autoFocus value={nameDraft} maxLength={80} onChange={event => setNameDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveName(); if (event.key === 'Escape') { setNameDraft(canvas.name); setRenaming(false) } }} /><button type="button" className="canvas-board__rename" onClick={saveName}><Check size={18} /> Save</button></> : <>{<strong>{canvas.name}</strong>}{canRename && <button type="button" className="canvas-board__rename" onClick={() => { setNameDraft(canvas.name); setRenaming(true) }}><PenLine size={17} /> Rename</button>}</>}</div></div>
+      <div className="canvas-board__actions">
+        <div className="canvas-board__traffic" role="status" aria-live="polite" aria-atomic="true" aria-label={`Canvas data: ${formatBytes(traffic.sent)} sent and ${formatBytes(traffic.received)} received`}><span title="Canvas data sent"><ArrowUp size={14} aria-hidden="true" />S {formatBytes(traffic.sent)}</span><span title="Canvas data received"><ArrowDown size={14} aria-hidden="true" />R {formatBytes(traffic.received)}</span></div>
+        <button type="button" className="canvas-board__close" onClick={onClose} aria-label="Close canvas"><X size={19} /></button>
+      </div>
     </header>
     <div className="canvas-board__tools" role="toolbar" aria-label="Canvas tools">
       <button type="button" className={tool === 'draw' ? 'is-active' : ''} onClick={() => setTool('draw')} aria-pressed={tool === 'draw'}><Pencil size={17} /> Draw</button>

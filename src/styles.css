@@ -4712,11 +4712,13 @@ a { -webkit-tap-highlight-color: transparent; }
 .canvas-board__head, .canvas-board__tools, .canvas-board__foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; }
 .canvas-board__head { border-bottom: 1px solid #e4e5ea; }
 .canvas-board__head > div:first-child { display: grid; gap: 2px; }
+.canvas-board__actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.canvas-board__title { min-width: 0; }.canvas-board__name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }.canvas-board__title input { min-height: 36px; width: min(420px, 48vw); padding: 0 9px; border: 1px solid #aeb9ed; border-radius: 8px; color: #20242e; background: #f7f8ff; font: inherit; font-weight: 750; }.canvas-board__title input:focus { outline: 3px solid rgba(82, 103, 213, .18); }.canvas-board__traffic { display: flex; align-items: center; gap: 8px; color: #4e5666; font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }.canvas-board__traffic span { display: inline-flex; align-items: center; gap: 3px; }.canvas-board__traffic span:first-child { color: #4055c3; }.canvas-board__traffic span:last-child { color: #28765c; }
 .canvas-board__eyebrow { color: #5267d5; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .canvas-board__presence { margin-left: auto; color: #525866; font-size: 13px; }
 .canvas-board__presence i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: #20a574; box-shadow: 0 0 0 3px #dff6ec; }
-.canvas-board__close, .canvas-board__tools button { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 10px; color: #323746; background: transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.canvas-board__close:hover, .canvas-board__tools button:hover, .canvas-board__tools button.is-active { border-color: #d8dcef; background: #eff1ff; color: #4055c3; }
+.canvas-board__close, .canvas-board__rename, .canvas-board__tools button { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 10px; color: #323746; background: transparent; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.canvas-board__close:hover, .canvas-board__rename:hover, .canvas-board__tools button:hover, .canvas-board__tools button.is-active { border-color: #d8dcef; background: #eff1ff; color: #4055c3; }
 .canvas-board__tools { flex-wrap: wrap; border-bottom: 1px solid #e4e5ea; padding-block: 8px; }
 .canvas-board__separator { width: 1px; height: 24px; background: #e0e2e8; }
 .canvas-board__color { min-width: 28px !important; width: 28px; min-height: 28px !important; height: 28px; padding: 0; border-radius: 50% !important; background: var(--swatch) !important; box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px rgba(18, 23, 42, .18); }
@@ -4732,6 +4734,30 @@ a { -webkit-tap-highlight-color: transparent; }
 .system-event--canvas { align-items: center; gap: 9px; }.system-event--canvas button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 9px; border: 1px solid #cfd5f4; border-radius: 999px; color: #4055c3; background: #f2f4ff; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }.system-event--canvas button:hover { background: #e7ebff; }
 @media (max-width: 620px) { .canvas-board { height: calc(100dvh - 16px); border-radius: 16px; }.canvas-board__head, .canvas-board__tools, .canvas-board__foot { padding-right: 10px; padding-left: 10px; }.canvas-board__presence { display: none; }.canvas-board__tools button { min-width: 44px; min-height: 44px; }.canvas-board__tools button:not(.canvas-board__color) { font-size: 0; }.canvas-board__tools button svg { width: 19px; height: 19px; }.canvas-board__separator { display: none; } }
 .canvas-backdrop { padding: 0; }.canvas-board { width: 100vw; height: 100dvh; max-width: none; border: 0; border-radius: 0; }.canvas-board__custom-color { display: inline-flex; align-items: center; gap: 6px; color: #525866; font-size: 13px; font-weight: 700; }.canvas-board__custom-color input { width: 32px; height: 32px; padding: 2px; border: 1px solid #d8dce7; border-radius: 8px; background: #fff; cursor: pointer; }.canvas-stroke-label { fill: #252a35; font-size: 13px; font-weight: 750; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }.canvas-create label { display: grid; gap: 7px; margin-top: 18px; color: #343946; font-size: 13px; font-weight: 750; }.canvas-create input { min-height: 44px; width: 100%; padding: 0 12px; border: 1px solid #cdd1dc; border-radius: 10px; color: #20242e; background: #fff; font: inherit; }.canvas-create input:focus { border-color: #5267d5; outline: 3px solid rgba(82, 103, 213, .16); }.feed-item--canvas { display: flex; align-items: center; gap: 14px; }.feed-item--canvas > div { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }.feed-item--canvas__icon { grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #4055c3; background: #e9edff; }.feed-item--canvas span:not(.feed-item--canvas__icon) { color: #5c6370; font-size: 12px; }.feed-item--canvas > button { min-height: 36px; margin-left: auto; padding: 0 11px; border: 1px solid #cfd5f4; border-radius: 999px; color: #4055c3; background: #f2f4ff; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }.feed-item--canvas > button:hover { background: #e7ebff; }
+.sent-message.feed-item--canvas { min-width: 0; padding: 13px 14px; background: linear-gradient(135deg, #4058dc, #5169f1); }.sent-message.feed-item--canvas .feed-item--canvas__icon { color: #465fdc; background: #fff; }.sent-message.feed-item--canvas strong { color: #fff; }.sent-message.feed-item--canvas span:not(.feed-item--canvas__icon) { color: rgba(255, 255, 255, .84); }
+.sent-message.feed-item--canvas > button { border-color: rgba(255, 255, 255, .86); color: #273b9d; background: #fff; }.sent-message.feed-item--canvas > button:hover { background: #e8ecff; color: #1d2e84; }
+
+/* Canvas stays immersive on small screens while keeping every tool easy to tap. */
+@media (max-width: 720px), (max-height: 560px) {
+  .canvas-board__head { min-height: 60px; padding-top: max(10px, env(safe-area-inset-top)); }
+  .canvas-board__head strong { max-width: min(58vw, 360px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .canvas-board__name-row { gap: 4px; }.canvas-board__name-row .canvas-board__rename { min-width: 36px; padding: 0 8px; font-size: 0; }.canvas-board__name-row .canvas-board__rename svg { width: 17px; height: 17px; }
+  .canvas-board__traffic { gap: 4px; font-size: 10px; }.canvas-board__traffic svg { width: 12px; height: 12px; }
+  .canvas-board__close { min-width: 44px; min-height: 44px; margin-left: auto; }
+  .canvas-board__tools { flex-wrap: nowrap; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; padding: 8px 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .canvas-board__tools::-webkit-scrollbar { display: none; }
+  .canvas-board__tools button { flex: 0 0 44px; min-width: 44px; min-height: 44px; padding: 0; font-size: 0; }
+  .canvas-board__tools button svg { width: 20px; height: 20px; }
+  .canvas-board__color { width: 44px; height: 44px; min-width: 44px !important; min-height: 44px !important; }
+  .canvas-board__custom-color { flex: 0 0 44px; }
+  .canvas-board__custom-color span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .canvas-board__custom-color input { width: 44px; height: 44px; }
+  .canvas-board__width { flex: 0 0 auto; min-height: 44px; font-size: 0; }
+  .canvas-board__width input { width: 104px; }
+  .canvas-board__separator { display: none; }
+  .canvas-board__foot { min-height: 42px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .canvas-board__foot span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 
 .floating-nav::before,
 .landing-hero::after,

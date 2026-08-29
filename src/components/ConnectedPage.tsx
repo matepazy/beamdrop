@@ -48,8 +48,7 @@ export function ConnectedPage({
   const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
-  const [canvasCreateOpen, setCanvasCreateOpen] = useState(false)
-  const [canvasName, setCanvasName] = useState('Untitled canvas')
+  const [compactCanvasViewport, setCompactCanvasViewport] = useState(false)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -70,11 +69,17 @@ export function ConnectedPage({
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
-  const canvasCondition = beam.peers.length + 1 > 4
-    ? 'More than four people are in this Beam. Canvas updates may feel less responsive.'
-    : health.tone !== 'good'
+  const canvasConditions = [
+    compactCanvasViewport
+      ? 'This screen is compact. Canvas works here, but a larger screen gives you more room to draw and navigate.'
+      : null,
+    beam.peers.length + 1 > 4
+      ? 'More than four people are in this Beam. Canvas updates may feel less responsive.'
+      : null,
+    health.tone !== 'good'
       ? `${health.label}. Canvas is best on a stable, direct connection.`
-      : null
+      : null,
+  ].filter((condition): condition is string => Boolean(condition))
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
@@ -97,6 +102,14 @@ export function ConnectedPage({
   useEffect(() => {
     setNameDraft(displayName)
   }, [displayName])
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px), (max-height: 560px)')
+    const updateViewport = () => setCompactCanvasViewport(query.matches)
+    updateViewport()
+    query.addEventListener('change', updateViewport)
+    return () => query.removeEventListener('change', updateViewport)
+  }, [])
 
   useEffect(() => {
     if (!attachmentsOpen) return
@@ -391,21 +404,19 @@ export function ConnectedPage({
   }
 
   const openCanvas = (action: 'start' | 'join') => {
-    if (action === 'start') { setCanvasName('Untitled canvas'); setCanvasCreateOpen(true); return }
-    if (canvasCondition) { setCanvasWarning(action); return }
+    if (action === 'start') {
+      if (canvasConditions.length) { setCanvasWarning(action); return }
+      beam.startCanvas()
+      setCanvasOpen(true)
+      return
+    }
+    if (canvasConditions.length) { setCanvasWarning(action); return }
     beam.joinCanvas()
-    setCanvasOpen(true)
-  }
-  const beginCanvas = () => {
-    if (!canvasName.trim()) return
-    setCanvasCreateOpen(false)
-    if (canvasCondition) { setCanvasWarning('start'); return }
-    beam.startCanvas(canvasName)
     setCanvasOpen(true)
   }
   const confirmCanvas = () => {
     if (!canvasWarning) return
-    if (canvasWarning === 'start') beam.startCanvas(canvasName)
+    if (canvasWarning === 'start') beam.startCanvas()
     else beam.joinCanvas()
     setCanvasWarning(null)
     setCanvasOpen(true)
@@ -630,23 +641,14 @@ export function ConnectedPage({
       )}
 
       <AnimatePresence>
-        {canvasCreateOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <section className="canvas-warning canvas-create" role="dialog" aria-modal="true" aria-labelledby="canvas-create-title">
-            <Paintbrush size={24} aria-hidden="true" />
-            <h2 id="canvas-create-title">Name your canvas</h2>
-            <p>Give everyone a clear reason to join.</p>
-            <label>Canvas name<input autoFocus value={canvasName} maxLength={80} onChange={event => setCanvasName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') beginCanvas() }} /></label>
-            <div><button type="button" className="quiet-button" onClick={() => setCanvasCreateOpen(false)}>Cancel</button><button type="button" className="primary" onClick={beginCanvas} disabled={!canvasName.trim()}>Start canvas</button></div>
-          </section>
-        </motion.div>}
         {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <CanvasBoard canvas={beam.canvas} displayName={displayName} onClose={() => setCanvasOpen(false)} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} />
+          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} displayName={displayName} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onImage={beam.addCanvasImage} />
         </motion.div>}
         {canvasWarning && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <section className="canvas-warning" role="dialog" aria-modal="true" aria-labelledby="canvas-warning-title">
             <Paintbrush size={24} aria-hidden="true" />
-            <h2 id="canvas-warning-title">Canvas may be slower here</h2>
-            <p>{canvasCondition}</p>
+            <h2 id="canvas-warning-title">Check your canvas setup</h2>
+            {canvasConditions.map((condition) => <p key={condition}>{condition}</p>)}
             <p className="canvas-warning__note">Drawing stays end-to-end encrypted. Images are compressed before they are shared.</p>
             <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
           </section>
@@ -1011,7 +1013,7 @@ function FeedCard({
       {item.received && <span className="message-sender">{item.sender}</span>}
       <article className={`feed-item feed-item--canvas ${item.received ? 'received-message' : 'sent-message'}`}>
         <div><span className="feed-item--canvas__icon"><Paintbrush size={17} /></span><strong>{item.value}</strong><span>{item.received ? `${item.sender} started a canvas` : 'You started a canvas'}</span></div>
-        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}>Join canvas</button>}
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}>{item.received ? 'Join canvas' : 'Open canvas'}</button>}
       </article>
     </div>
   }
