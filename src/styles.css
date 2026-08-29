@@ -25,6 +25,16 @@
   --shadow-soft: 0 2px 10px rgba(21, 21, 21, 0.06);
   --shadow-toggle-knob: 0 1px 2px rgba(0, 0, 0, 0.18);
   --radius-ui: 20px;
+  /* Connected workspace geometry: an inset surface reduces its radius by
+     the same amount as the enclosing surface's inset. */
+  --radius-connected-xl: 28px;
+  --radius-connected-lg: 24px;
+  --radius-connected-md: 16px;
+  --radius-connected-sm: 12px;
+  --shadow-connected: 0 10px 24px rgba(21, 21, 21, 0.08),
+    0 2px 6px rgba(21, 21, 21, 0.05);
+  --shadow-connected-menu: 0 16px 32px rgba(21, 21, 21, 0.12),
+    0 3px 8px rgba(21, 21, 21, 0.06);
   font-synthesis: none;
 }
 
@@ -4596,4 +4606,193 @@ a { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 620px) {
   .nav-blur { height: 94px; }
+}
+
+/* =========================================================
+   Connected page surface system
+   Keep elevated surfaces un-clipped and make every nested corner follow
+   outer radius = inner radius + the surrounding inset.
+   ========================================================= */
+.room {
+  overflow: visible;
+}
+
+.participants,
+.chat-composer,
+.location-draft,
+.attachment-menu,
+.join-request-card {
+  border-radius: var(--radius-connected-lg);
+}
+
+.participants,
+.chat-composer {
+  box-shadow: var(--shadow-connected);
+}
+
+.participants {
+  padding: 0 12px;
+}
+
+.participants__title {
+  min-height: 40px;
+}
+
+.participants__list {
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+.participant {
+  border-radius: 999px;
+}
+
+.conversation .feed-item,
+.conversation .transfer-card,
+.join-request-card {
+  border-radius: var(--radius-connected-md);
+}
+
+.conversation .feed-item,
+.conversation .transfer-card {
+  box-shadow: 0 1px 2px rgba(21, 21, 21, 0.05);
+}
+
+.conversation .feed-item--location {
+  padding: 8px;
+  border-radius: 20px;
+}
+
+.file-message__mark,
+.conversation .transfer-card .file-mark {
+  border-radius: var(--radius-connected-sm);
+}
+
+.chat-composer:has(.chat-composer__text-row) {
+  padding: 6px 8px;
+  border-color: rgba(21, 21, 21, 0.14);
+  box-shadow: var(--shadow-connected);
+}
+
+.chat-composer:has(.chat-composer__text-row):focus-within {
+  border-color: rgba(69, 94, 245, 0.62);
+  box-shadow: 0 0 0 4px rgba(69, 94, 245, 0.1), var(--shadow-connected);
+}
+
+.chat-composer__text-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-composer__text-row > textarea {
+  min-height: 40px;
+  padding: 9px 2px;
+}
+
+.chat-composer__text-row .attachment-action,
+.chat-composer__text-row .send-message {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+}
+
+.attachment-menu {
+  padding: 8px;
+  box-shadow: var(--shadow-connected-menu);
+}
+
+.attachment-menu button {
+  min-height: 40px;
+  border-radius: var(--radius-connected-md);
+}
+
+.location-draft {
+  display: grid;
+  gap: 0;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #f5f4f1;
+}
+
+.location-draft__head {
+  padding: 3px 4px 9px;
+}
+
+.location-draft .map-picker {
+  border-radius: var(--radius-connected-md);
+}
+
+.location-draft__actions {
+  padding: 9px 4px 3px;
+}
+
+.location-preview {
+  margin-top: 8px;
+  border-radius: calc(var(--radius-connected-md) - 8px);
+}
+
+.location-preview__label {
+  right: 6px;
+  bottom: 6px;
+  border-radius: 999px;
+}
+
+.settings-dialog,
+.metrics-dialog,
+.dangerous-file-dialog {
+  border-radius: var(--radius-connected-xl);
+  box-shadow: var(--shadow-connected-menu);
+}
+
+.settings-dialog__password input,
+.dangerous-file-dialog__icon,
+.metrics-dialog__head > button {
+  border-radius: var(--radius-connected-md);
+}
+
+@media (max-width: 620px) {
+  .participants__title {
+    min-height: 44px;
+  }
+
+  .chat-composer:has(.chat-composer__text-row) {
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+
+  .chat-composer__text-row .attachment-action,
+  .chat-composer__text-row .send-message {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    border-radius: 50%;
+  }
+
+  .location-draft {
+    padding: 8px;
+  }
+}
+
+/* Landing entry card uses the same nested-surface geometry as the room:
+   32px outer radius = 24px control radius + 8px outer inset. */
+.hero-actions {
+  padding: 8px;
+  border-radius: 32px;
+}
+
+.hero-actions .create-button,
+.hero-actions .join-form input,
+.hero-actions .join-button {
+  border-radius: 24px;
+}
+
+.hero-actions .join-panel {
+  margin-top: 12px;
+  padding: 0;
+}
+
+.hero-actions .join-form {
+  margin-top: 8px;
 }

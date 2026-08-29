@@ -100,7 +100,6 @@ export function LandingPage({
 
       <section className="landing-hero">
         <motion.div className="hero-copy" {...enter(0.08)}>
-          <p className="hero-kicker">Private browser-to-browser handoff</p>
 
           <h1>
             Pass it on.
