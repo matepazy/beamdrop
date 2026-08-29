@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { joinRoom } from 'trystero/nostr'
 import { deriveRoomMaterial } from '../lib/crypto'
+import { authenticatePeer } from '../lib/peerAuth'
 import { inferDeviceType, type DeviceType } from '../lib/device'
 import { CHUNK_SIZE, MAX_ACTIVE_TRANSFERS, MAX_FILE_SIZE, decodeChunk, encodeChunk, parseMessage, totalChunksFor, type BeamMessage, type FileOffer } from '../lib/protocol'
 import { getRtcConfig } from '../lib/rtc'
 import { getRoomDiagnostics, type RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { areAllRecipientsTerminal, createTransferMeter, isRecipientTerminal, PREPARED_CHUNK_COUNT, shouldReportProgress, type OutgoingTransfer } from '../lib/transfer'
 
-export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'failed'
+export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'verification-failed' | 'failed'
 export type FeedItem = { id: string; kind: 'text' | 'link' | 'file'; value: string; sender: string; createdAt: number; size?: number; url?: string; received?: boolean; objectUrl?: string }
 export type TransferRecord = { id: string; transferId: string; peerId?: string; name: string; size: number; mimeType: string; sender: string; createdAt: number; direction: 'sending' | 'receiving'; status: 'offered' | 'active' | 'complete' | 'declined' | 'cancelled' | 'interrupted'; progress: number; speed: number; averageSpeed?: number; peakSpeed?: number; elapsedMs?: number; file?: File }
 export type Peer = { id: string; name: string; deviceType: DeviceType }
@@ -39,7 +40,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [transfers, setTransfers] = useState<TransferRecord[]>([])
   const [freeForAll, setFreeForAllState] = useState(false)
   const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
-  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {})
+  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>())
   useEffect(() => { nameRef.current = displayName }, [displayName])
   const updateTransfer = useCallback((id: string, update: Partial<TransferRecord>) => setTransfers(current => current.map(item => item.id === id ? { ...item, ...update } : item)), [])
   const send = useCallback(async (message: BeamMessage, peerId?: string) => { await sendRef.current?.(message, peerId) }, [])
@@ -49,6 +50,8 @@ export function useBeam(secret: string | null, _password: string, displayName: s
     let stopped = false; let room: RoomLike | null = null; let notFound: number | undefined; let foundTransportPeer = false
     joined.current = isCreator; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([])
     const syncPeers = () => setPeers([...sessions.current.values()].filter(session => session.status === 'connected').map(session => ({ id: session.peerId, name: session.displayName, deviceType: session.deviceType })))
+    const rejectInvalid = (peerId: string) => { const count = (invalidPeers.current.get(peerId) ?? 0) + 1; invalidPeers.current.set(peerId, count); return count >= 8 }
+    const isBlocked = (peerId: string) => (invalidPeers.current.get(peerId) ?? 0) >= 8
     const updateConnectionState = () => { if (!stopped) setState([...sessions.current.values()].some(session => session.status === 'connected') ? 'connected' : 'waiting') }
     const peerName = (peerId: string) => sessions.current.get(peerId)?.displayName ?? 'Connected device'
     const updateOutgoingRecord = (transfer: OutgoingTransfer, metrics?: { speed: number; averageSpeed: number; peakSpeed: number; elapsedMs: number }) => {
@@ -61,7 +64,17 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         setState('waiting'); setPasswordRequired(false)
         const [rtcConfig, material] = await Promise.all([getRtcConfig(), deriveRoomMaterial(secret)])
         if (stopped) return
-        room = joinRoom({ appId: 'beamdrop-v2', rtcConfig, password: material.signalingKey }, material.roomId) as unknown as RoomLike; roomRef.current = room
+        room = joinRoom({ appId: 'beamdrop-v2', rtcConfig, password: material.signalingKey }, material.roomId, {
+          handshakeTimeoutMs: 5_000,
+          onPeerHandshake: async (_peerId, handshakeSend, handshakeReceive, isInitiator) => {
+            await authenticatePeer({ roomId: material.roomId, authenticationKey: material.authenticationKey, send: handshakeSend, receive: handshakeReceive, isInitiator })
+          },
+          onJoinError: ({ error }) => {
+            if (stopped || !/handshake|peer authentication|incompatible peer protocol|official release/i.test(error)) return
+            // Authentication errors intentionally remain neutral: they do not prove hostile intent.
+            setState('verification-failed')
+          },
+        }) as unknown as RoomLike; roomRef.current = room
         const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS)
         sendRef.current = async (message, peerId) => { if (peerId) return control.send(message, { target: peerId }); await Promise.all([...sessions.current.values()].filter(session => session.status === 'connected').map(session => control.send(message, { target: session.peerId }))) }
         const hello = (peerId: string) => void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId })
@@ -82,9 +95,9 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           setState(current => current === 'waiting' ? 'peer-found' : current)
           if (!joined.current) void access.send({ type: 'join-request', name: nameRef.current, deviceType: inferDeviceType(), token: ownJoinToken.current }, { target: peerId })
         }
-        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); updateConnectionState() }
+        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); updateConnectionState() }
         access.onMessage = (message, { peerId }) => {
-          if (stopped || !message || typeof message !== 'object') return
+          if (stopped || isBlocked(peerId) || !message || typeof message !== 'object') { rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId)
           if (!session || session.status === 'kicked') return
           if (message.type === 'join-request') {
@@ -114,7 +127,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           hello(message.peerId)
         }
         control.onMessage = (raw, { peerId }) => {
-          const message = parseMessage(raw); if (!message || stopped) return
+          const message = parseMessage(raw); if (!message || stopped || isBlocked(peerId)) { if (!message) rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId); if (!session || !['authenticated', 'connected'].includes(session.status)) return
           if (message.type === 'kick-notice') { if (!isCreator) { setState('kicked'); void room?.leave() }; return }
           if (message.type === 'hello') { session.displayName = message.name; session.deviceType = message.deviceType; session.status = 'connected'; syncPeers(); updateConnectionState(); return }
@@ -126,11 +139,11 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           if (message.type === 'file-decline' || message.type === 'file-cancel') { const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (transfer && recipient && !isRecipientTerminal(recipient.status)) { recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = message.type === 'file-decline' ? 'rejected' : 'cancelled'; updateOutgoingRecord(transfer) }; const received = incoming.current.get(key); if (received) { incoming.current.delete(key); updateTransfer(received.recordId, { status: message.type === 'file-decline' ? 'declined' : 'cancelled' }) }; return }
           if (message.type === 'file-complete') { const received = incoming.current.get(key); if (received?.accepted && received.bytes === received.offer.size) return; const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (transfer && recipient && recipient.status === 'transferring' && recipient.bytesSent === transfer.file.size) { recipient.status = 'completed'; recipient.abortController = undefined; updateOutgoingRecord(transfer) } }
         }
-        chunks.onMessage = (raw, { peerId }) => { const frame = decodeChunk(raw); if (!frame) return; const transfer = incoming.current.get(incomingKey(peerId, frame.transferId)); if (!transfer || !transfer.accepted || !transfer.chunks || frame.index !== transfer.chunks.length || frame.index >= transfer.offer.totalChunks) return; const expected = Math.min(CHUNK_SIZE, transfer.offer.size - frame.index * CHUNK_SIZE); if (frame.payload.byteLength !== expected || transfer.bytes + expected > transfer.offer.size) return; transfer.chunks.push(frame.payload); transfer.bytes += expected; const measurement = (transfer.meter ??= createTransferMeter())(transfer.bytes), now = performance.now(); if (shouldReportProgress(transfer.lastReportedAt ?? 0, now) || transfer.bytes === transfer.offer.size) { transfer.lastReportedAt = now; updateTransfer(transfer.recordId, { status: 'active', progress: transfer.offer.size ? transfer.bytes / transfer.offer.size : 1, speed: measurement.speed, averageSpeed: measurement.averageSpeed, peakSpeed: measurement.peakSpeed, elapsedMs: measurement.elapsedMs }) }; if (transfer.bytes !== transfer.offer.size) return; const objectUrl = URL.createObjectURL(new Blob(transfer.chunks, { type: transfer.offer.mimeType })); updateTransfer(transfer.recordId, { status: 'complete', progress: 1 }); setFeed(current => [{ id: transfer.recordId, kind: 'file', value: transfer.offer.name, size: transfer.offer.size, sender: peerName(peerId), createdAt: Date.now(), received: true, objectUrl }, ...current]); incoming.current.delete(incomingKey(peerId, frame.transferId)); void send({ v: 2, type: 'file-complete', transferId: frame.transferId }, peerId) }
+        chunks.onMessage = (raw, { peerId }) => { const frame = decodeChunk(raw); if (!frame || isBlocked(peerId)) { rejectInvalid(peerId); return }; const transfer = incoming.current.get(incomingKey(peerId, frame.transferId)); if (!transfer || !transfer.accepted || !transfer.chunks || frame.index !== transfer.chunks.length || frame.index >= transfer.offer.totalChunks) { rejectInvalid(peerId); return }; const expected = Math.min(CHUNK_SIZE, transfer.offer.size - frame.index * CHUNK_SIZE); if (frame.payload.byteLength !== expected || transfer.bytes + expected > transfer.offer.size) { rejectInvalid(peerId); return }; transfer.chunks.push(frame.payload); transfer.bytes += expected; const measurement = (transfer.meter ??= createTransferMeter())(transfer.bytes), now = performance.now(); if (shouldReportProgress(transfer.lastReportedAt ?? 0, now) || transfer.bytes === transfer.offer.size) { transfer.lastReportedAt = now; updateTransfer(transfer.recordId, { status: 'active', progress: transfer.offer.size ? transfer.bytes / transfer.offer.size : 1, speed: measurement.speed, averageSpeed: measurement.averageSpeed, peakSpeed: measurement.peakSpeed, elapsedMs: measurement.elapsedMs }) }; if (transfer.bytes !== transfer.offer.size) return; const objectUrl = URL.createObjectURL(new Blob(transfer.chunks, { type: transfer.offer.mimeType })); updateTransfer(transfer.recordId, { status: 'complete', progress: 1 }); setFeed(current => [{ id: transfer.recordId, kind: 'file', value: transfer.offer.name, size: transfer.offer.size, sender: peerName(peerId), createdAt: Date.now(), received: true, objectUrl }, ...current]); incoming.current.delete(incomingKey(peerId, frame.transferId)); void send({ v: 2, type: 'file-complete', transferId: frame.transferId }, peerId) }
         if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) { void room?.leave(); setState('not-found') } }, NOT_FOUND_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; if (notFound) clearTimeout(notFound); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); admitPeerRef.current = () => {}; sendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer])
 
   const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim(), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])

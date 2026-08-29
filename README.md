@@ -45,9 +45,9 @@ Beam is designed for temporary exchanges:
 
 - No accounts, database, room directory, analytics, or Beam backend.
 - Files, messages, links, secrets, and session history are not persisted by Beam.
-- Only the local display name and theme preferences may be stored in `localStorage`.
+- Beam does not store identity, session, authentication, or display-name data in browser storage.
 - Incoming files are held in browser memory until the recipient saves them.
-- WebRTC transport is browser-encrypted. Beam also encrypts control messages and file chunks with a session-only AES-256-GCM key derived from the Beam secret and optional password. On restrictive networks, an external TURN provider may relay encrypted traffic.
+- WebRTC transport is browser-encrypted. The Beam code derives separate rendezvous and peer-authentication keys; no session data is persisted. On restrictive networks, an external TURN provider may relay encrypted traffic.
 
 Beam still depends on internet connectivity for signaling and peer connection setup. Do not share sensitive information unless the participants and network environment are trusted.
 
@@ -101,6 +101,16 @@ npm run build
 ```
 
 The repository includes a `vercel.json` configuration for deploying to Vercel with the Vite framework defaults. Any static host that serves the generated `dist/` directory can also host the app.
+
+## Peer authentication and release metadata
+
+Before Trystero activates a connection, both browsers complete BeamDrop peer protocol v1 authentication. Each side creates a fresh 256-bit nonce and verifies an HMAC-SHA-256 proof using a dedicated HKDF-derived peer-authentication key. This is separate from the reserved AES-GCM application key and the Trystero signaling key. The proof is domain-separated and binds the Beam room, protocol version, challenge role, and fresh nonce, so a captured proof cannot be replayed for another challenge or room.
+
+Authentication proves only that the peer knows the Beam/session cryptographic material. It does not make a peer safe: all received controls, offers, chunks, text, links, and metadata are still runtime-validated and bounded, and invalid peers are ignored after a small per-session failure threshold. Incomplete transfer state and authentication-related state are memory-only and removed on disconnect.
+
+The app also supports signed official-release metadata using ECDSA P-256. A valid signature means the manifest was produced by an authorized BeamDrop release process; it **does not** prove that a remote browser is executing an unmodified official client. By default (`REQUIRE_OFFICIAL_RELEASE = false`), an unsigned or invalid release manifest is simply unofficial and the peer may still join if its session authentication succeeds.
+
+To enable release verification, release automation must replace the public JWK, manifest, and signature in `src/lib/releaseMetadata.ts` at build time. Keep the ECDSA private key exclusively in the release system (for example, a protected GitHub Actions secret); never put it in source, Vite environment variables, or public assets. Sign the exact canonical representation implemented by `canonicalReleaseManifest`. Set `REQUIRE_OFFICIAL_RELEASE` to `true` only if the product intentionally blocks forks and unsigned builds.
 
 ## Project structure
 

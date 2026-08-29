@@ -48,7 +48,9 @@ export function WaitingPage({
   }, [password])
 
   const label =
-    state === 'failed'
+    state === 'verification-failed'
+      ? 'Could not verify the other device.'
+      : state === 'failed'
       ? "Couldn't establish a connection."
       : state === 'password-required'
         ? 'This Beam is password protected.'
