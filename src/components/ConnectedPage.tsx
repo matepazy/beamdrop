@@ -48,6 +48,8 @@ export function ConnectedPage({
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [participantsExpanded, setParticipantsExpanded] = useState(false)
   const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
+  const [pendingDataFiles, setPendingDataFiles] = useState<File[] | null>(null)
+  const [pendingDataReceive, setPendingDataReceive] = useState<TransferRecord | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
   const [compactCanvasViewport, setCompactCanvasViewport] = useState(false)
@@ -85,8 +87,7 @@ export function ConnectedPage({
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
-    beam.pendingPeers.length +
-    beam.typingPeerIds.length
+    beam.pendingPeers.length
 
   useLayoutEffect(() => {
     if (connected && conversationRef.current) {
@@ -234,7 +235,6 @@ export function ConnectedPage({
   }
 
   const clearComposer = () => {
-    beam.setTyping(false)
     setComposer('')
     setPickedLocation(null)
     setComposerMode('text')
@@ -339,15 +339,6 @@ export function ConnectedPage({
   const hasActivity =
     beam.transfers.length > 0 ||
     beam.feed.length > 0
-  const typingNames = beam.typingPeerIds
-    .map((peerId) => beam.peers.find((peer) => peer.id === peerId)?.name)
-    .filter((name): name is string => Boolean(name))
-  const typingLabel = typingNames.length === 1
-    ? `${typingNames[0]} is typing`
-    : typingNames.length === 2
-      ? `${typingNames[0]} and ${typingNames[1]} are typing`
-      : `${typingNames.length} people are typing`
-
   const completedReceivedFileIds = new Set(
     beam.feed
       .filter((item) => item.kind === 'file' && item.received)
@@ -394,6 +385,14 @@ export function ConnectedPage({
   }
 
   const acceptFile = (transfer: TransferRecord) => {
+    if (dataSaver) {
+      setPendingDataReceive(transfer)
+      return
+    }
+    confirmFileReceive(transfer)
+  }
+
+  const confirmFileReceive = (transfer: TransferRecord) => {
     if (isPotentiallyDangerousFile(transfer.name)) {
       dangerousFileTriggerRef.current = document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -416,7 +415,7 @@ export function ConnectedPage({
   }
 
   const openCanvas = (action: 'start' | 'join') => {
-    if (dataSaver) return
+    if (dataSaver) { setCanvasWarning(action); return }
     if (action === 'start') {
       if (canvasConditions.length) { setCanvasWarning(action); return }
       beam.startCanvas()
@@ -539,11 +538,11 @@ export function ConnectedPage({
       )}
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
-        {hasActivity || beam.pendingPeers.length > 0 || typingNames.length > 0 ? (
+        {hasActivity || beam.pendingPeers.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
-            ) : <FeedCard key={entry.item.id} item={entry.item} dataSaver={dataSaver} onCanvasJoin={dataSaver ? undefined : entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
+            ) : <FeedCard key={entry.item.id} item={entry.item} dataSaver={dataSaver} onCanvasJoin={entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
                 {beam.pendingPeers.map((peer) => (
@@ -557,12 +556,6 @@ export function ConnectedPage({
                     </button>
                   </div>
                 ))}
-              </div>
-            )}
-            {typingNames.length > 0 && (
-              <div className="typing-indicator" role="status" aria-live="polite" aria-atomic="true">
-                <span className="typing-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
-                <span>{typingLabel}</span>
               </div>
             )}
           </div>
@@ -579,11 +572,13 @@ export function ConnectedPage({
         className="sr-only"
         type="file"
         multiple
-        onChange={(event) =>
-          Array.from(
-            event.target.files ?? [],
-          ).forEach(beam.offerFile)
-        }
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? [])
+          event.target.value = ''
+          if (!files.length) return
+          if (dataSaver) setPendingDataFiles(files)
+          else files.forEach(beam.offerFile)
+        }}
       />
 
       <form className="chat-composer" onSubmit={(event) => {
@@ -610,23 +605,20 @@ export function ConnectedPage({
             <div className="attachment-actions" ref={attachmentActionsRef}>
               <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
               {attachmentsOpen && <div className="attachment-menu" role="menu">
-                {!dataSaver && <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>}
-                {!dataSaver && <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>}
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
+                <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
-                {!dataSaver && <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>}
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
               </div>}
             </div>
             <textarea
               ref={composerInput}
               value={composer}
-              maxLength={dataSaver ? 1_000 : 8_000}
+              maxLength={8_000}
               onChange={(event) => {
                 setComposer(event.target.value)
-                beam.setTyping(event.target.value.trim().length > 0)
                 resizeComposer(event.currentTarget)
               }}
-              onBlur={() => beam.setTyping(false)}
-              onFocus={() => beam.setTyping(composer.trim().length > 0)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
@@ -656,12 +648,13 @@ export function ConnectedPage({
 
       <AnimatePresence>
         {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} displayName={displayName} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onStrokeStart={beam.startCanvasStroke} onStrokePoints={beam.appendCanvasStrokePoints} onImage={beam.addCanvasImage} onDelete={beam.deleteCanvasElement} />
+          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} displayName={displayName} dataSaver={dataSaver} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onStrokeStart={beam.startCanvasStroke} onStrokePoints={beam.appendCanvasStrokePoints} onImage={beam.addCanvasImage} onDelete={beam.deleteCanvasElement} />
         </motion.div>}
         {canvasWarning && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <section className="canvas-warning" role="dialog" aria-modal="true" aria-labelledby="canvas-warning-title">
             <Paintbrush size={24} aria-hidden="true" />
             <h2 id="canvas-warning-title">Check your canvas setup</h2>
+            {dataSaver && <p>Data saver will use fewer live drawing updates and stronger image compression after you {canvasWarning === 'start' ? 'create' : 'join'} this canvas.</p>}
             {canvasConditions.map((condition) => <p key={condition}>{condition}</p>)}
             <p className="canvas-warning__note">Drawing stays end-to-end encrypted. Images are compressed before they are shared.</p>
             <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
@@ -701,6 +694,26 @@ export function ConnectedPage({
                   setPendingDangerousFile(null)
                 }}>Accept anyway</button>
               </div>
+            </motion.section>
+          </motion.div>
+        )}
+        {pendingDataFiles && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setPendingDataFiles(null)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-send-title" aria-describedby="data-saver-send-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><FileText size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-send-title">Send files using data?</h2>
+              <p id="data-saver-send-description">These {pendingDataFiles.length === 1 ? 'file is' : 'files are'} {formatBytes(pendingDataFiles.reduce((total, file) => total + file.size, 0))}. Data saver will not create previews, but sending still uses your connection data.</p>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setPendingDataFiles(null)}>Cancel</button><button className="primary small" type="button" onClick={() => { pendingDataFiles.forEach(beam.offerFile); setPendingDataFiles(null) }}>Send files</button></div>
+            </motion.section>
+          </motion.div>
+        )}
+        {pendingDataReceive && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: 8 }} onMouseDown={() => setPendingDataReceive(null)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-receive-title" aria-describedby="data-saver-receive-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><Download size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-receive-title">Receive this file using data?</h2>
+              <p id="data-saver-receive-description"><strong>{pendingDataReceive.name}</strong> is {formatBytes(pendingDataReceive.size)}. Data saver will not create a preview, but receiving still uses your connection data.</p>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setPendingDataReceive(null)}>Cancel</button><button className="primary small" type="button" onClick={() => { const transfer = pendingDataReceive; setPendingDataReceive(null); confirmFileReceive(transfer) }}>Receive file</button></div>
             </motion.section>
           </motion.div>
         )}
@@ -783,7 +796,7 @@ export function ConnectedPage({
                 <p className="settings-dialog__note">Only the person who started this Beam can change its password or joining mode.</p>
               )}
               <div className="settings-dialog__section settings-dialog__toggle">
-                <div><strong>Data saver</strong><p>{dataSaver ? 'On for this browser only. Beam is using text-only sharing to minimize traffic.' : 'Reduce data use on this browser. This does not change anyone else’s Beam.'}</p></div>
+              <div><strong>Data saver</strong><p>{dataSaver ? 'On for this browser only. Files, locations, and Canvas stay available with lower-data behavior.' : 'Reduce data use on this browser. This does not change anyone else’s Beam.'}</p></div>
                 <button className={`toggle ${dataSaver ? 'on' : ''}`} type="button" role="switch" aria-checked={dataSaver} onClick={() => dataSaver ? setDataSaverMode(false) : setDataSaverWarningOpen(true)} aria-label="Toggle data saver"><span /></button>
               </div>
               <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); setMetricsOpen(true) }}><Activity size={17} /> Technical metrics</button>
@@ -796,7 +809,7 @@ export function ConnectedPage({
               <div className="data-saver-dialog__icon"><WifiOff size={20} aria-hidden="true" /></div>
               <h2 id="data-saver-title">Turn on data saver?</h2>
               <p id="data-saver-description">Your Beam experience will be noticeably worse. This setting affects only this browser, not anyone else in the Beam.</p>
-              <ul><li>Turns off typing indicators.</li><li>Disables file sharing and automatically declines files sent to you.</li><li>Disables Canvas, including drawing sync and images.</li><li>Disables location sharing and map previews.</li><li>Limits messages you send or receive from compatible peers to 1,000 characters.</li><li>Asks compatible peers not to send you file, Canvas, or typing traffic.</li></ul>
+              <ul><li>Removes typing indicators.</li><li>Keeps files and locations available, without attachment or map previews.</li><li>Asks before file uploads and downloads because they can use significant data.</li><li>Keeps Canvas available with fewer live updates and stronger image compression.</li><li>Warns you before creating or joining a Canvas.</li></ul>
               <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setDataSaverWarningOpen(false)}>Cancel</button><button className="primary small" type="button" onClick={() => { setDataSaverMode(true); setDataSaverWarningOpen(false) }}>Turn on data saver</button></div>
             </motion.section>
           </motion.div>

@@ -25,7 +25,6 @@ type Incoming = { recordId: string; offer: FileOffer; chunks?: Uint8Array[]; byt
 type AccessMessage =
   | { type: 'join-request'; name: string; deviceType: DeviceType; token: string }
   | { type: 'member-approved'; peerId: string; token: string }
-type TypingMessage = { active: boolean }
 type CanvasMessage =
   | { type: 'start'; canvas: CanvasSession }
   | { type: 'join'; canvasId: string }
@@ -37,12 +36,14 @@ type CanvasMessage =
   | { type: 'stroke-points'; canvasId: string; id: string; points: number[] }
   | { type: 'image'; canvasId: string; image: CanvasImage }
   | { type: 'delete'; canvasId: string; id: string }
-const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', TYPING = 'beam-typing-v1', CANVAS = 'beam-canvas-v2', NOT_FOUND_TIMEOUT = 8_000, TYPING_TIMEOUT = 3_500, TYPING_REFRESH_INTERVAL = 1_500
+const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', NOT_FOUND_TIMEOUT = 8_000
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const canvasMessageBytes = (message: CanvasMessage) => new TextEncoder().encode(JSON.stringify(message)).byteLength
 // Half-pixel precision is visually indistinguishable here, but keeps live drawing packets compact.
-const compactPoint = (point: CanvasPoint) => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 })
-const compactPoints = (points: CanvasPoint[]) => points.flatMap(point => { const compact = compactPoint(point); return [compact.x, compact.y] })
+const compactPoint = (point: CanvasPoint, dataSaver = false) => dataSaver
+  ? { x: Math.round(point.x), y: Math.round(point.y) }
+  : { x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 }
+const compactPoints = (points: CanvasPoint[], dataSaver = false) => points.flatMap(point => { const compact = compactPoint(point, dataSaver); return [compact.x, compact.y] })
 const expandPoints = (points: number[]) => points.reduce<CanvasPoint[]>((result, value, index) => index % 2 ? [...result, { x: points[index - 1], y: value }] : result, [])
 const incomingKey = (peerId: string, transferId: string) => `${peerId}:${transferId}`
 function outgoingView(transfer: OutgoingTransfer): Pick<TransferRecord, 'status' | 'progress'> {
@@ -61,19 +62,17 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [pendingPeers, setPendingPeers] = useState<Peer[]>([])
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [transfers, setTransfers] = useState<TransferRecord[]>([])
-  const [typingPeerIds, setTypingPeerIds] = useState<string[]>([])
   const [freeForAll, setFreeForAllState] = useState(false)
   const [canvas, setCanvas] = useState<CanvasSession | null>(null)
   const [canvasTraffic, setCanvasTraffic] = useState<CanvasTraffic>({ sent: 0, received: 0 })
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
-  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), typingTimers = useRef(new Map<string, number>()), typingActive = useRef(false), typingLastSentAt = useRef(0), sendTypingRef = useRef<(active: boolean) => void>(() => {}), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver), dataSaverPeerIds = useRef(new Set<string>())
+  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver)
   useEffect(() => { nameRef.current = displayName }, [displayName])
   useEffect(() => { dataSaverRef.current = dataSaver }, [dataSaver])
   const updateTransfer = useCallback((id: string, update: Partial<TransferRecord>) => setTransfers(current => current.map(item => item.id === id ? { ...item, ...update } : item)), [])
   const send = useCallback(async (message: BeamMessage, peerId?: string) => { await sendRef.current?.(message, peerId) }, [])
   const addSystemEntry = useCallback((id: string, value: string, createdAt = Date.now()) => setFeed(current => current.some(item => item.id === id) ? current : [{ id, kind: 'system', value, sender: 'System', createdAt }, ...current]), [])
-  const setTyping = useCallback((active: boolean) => sendTypingRef.current(active), [])
   const retryConnection = useCallback(() => setConnectionAttempt(current => current + 1), [])
   const canvasSendRef = useRef<((message: CanvasMessage, peerId?: string) => Promise<void>) | null>(null)
   const canvasRef = useRef<CanvasSession | null>(null)
@@ -88,7 +87,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   useEffect(() => {
     if (!secret) { setState('idle'); return }
     let stopped = false; let room: RoomLike | null = null; let notFound: number | undefined; let recoveryTimer: number | undefined; let foundTransportPeer = false; let hadConnectedPeer = false
-    joined.current = isCreator; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([]); setTypingPeerIds([])
+    joined.current = isCreator; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([])
     const syncPeers = () => setPeers([...sessions.current.values()].filter(session => session.status === 'connected').map(session => ({ id: session.peerId, name: session.displayName, deviceType: session.deviceType })))
     const rejectInvalid = (peerId: string) => { const count = (invalidPeers.current.get(peerId) ?? 0) + 1; invalidPeers.current.set(peerId, count); return count >= 8 }
     const isBlocked = (peerId: string) => (invalidPeers.current.get(peerId) ?? 0) >= 8
@@ -122,11 +121,8 @@ export function useBeam(secret: string | null, _password: string, displayName: s
             setState('verification-failed')
           },
         }) as unknown as RoomLike; roomRef.current = room
-        const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS), typing = room.makeAction<TypingMessage>(TYPING), canvasAction = room.makeAction<CanvasMessage>(CANVAS)
-        const messageForPeer = (message: BeamMessage, peerId: string): BeamMessage => message.type === 'item' && dataSaverPeerIds.current.has(peerId)
-          ? { ...message, item: { ...message.item, value: message.item.value.slice(0, 1_000) } }
-          : message
-        sendRef.current = async (message, peerId) => { if (peerId) return control.send(messageForPeer(message, peerId), { target: peerId }); await Promise.all([...sessions.current.values()].filter(session => session.status === 'connected').map(session => control.send(messageForPeer(message, session.peerId), { target: session.peerId }))) }
+        const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS), canvasAction = room.makeAction<CanvasMessage>(CANVAS)
+        sendRef.current = async (message, peerId) => { if (peerId) return control.send(message, { target: peerId }); await Promise.all([...sessions.current.values()].filter(session => session.status === 'connected').map(session => control.send(message, { target: session.peerId }))) }
         canvasSendRef.current = async (message, peerId) => {
           const bytes = canvasMessageBytes(message)
           if (peerId) {
@@ -134,7 +130,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
             setCanvasTraffic(current => ({ ...current, sent: current.sent + bytes }))
             return
           }
-          const sends = await Promise.allSettled([...sessions.current.values()].filter(session => session.status === 'connected' && !dataSaverPeerIds.current.has(session.peerId)).map(session => canvasAction.send(message, { target: session.peerId })))
+          const sends = await Promise.allSettled([...sessions.current.values()].filter(session => session.status === 'connected').map(session => canvasAction.send(message, { target: session.peerId })))
           const delivered = sends.filter(result => result.status === 'fulfilled').length
           if (delivered) setCanvasTraffic(current => ({ ...current, sent: current.sent + bytes * delivered }))
         }
@@ -144,7 +140,6 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           return typeof item.id === 'string' && item.id.length <= 128 && typeof item.name === 'string' && item.name.length <= 80 && typeof item.starter === 'string' && item.starter.length <= 48 && Number.isFinite(item.createdAt) && Array.isArray(item.strokes) && item.strokes.length <= 2000 && Array.isArray(item.images) && item.images.length <= 40
         }
         canvasAction.onMessage = (message, { peerId }) => {
-          if (dataSaverRef.current) return
           const session = sessions.current.get(peerId)
           if (!session || session.status !== 'connected' || !message || typeof message !== 'object') return
           if (message.type === 'start' && validCanvas(message.canvas)) {
@@ -191,27 +186,6 @@ export function useBeam(secret: string | null, _password: string, displayName: s
             setCanvas(current => current?.id === message.canvasId ? { ...current, strokes: current.strokes.filter(stroke => stroke.id !== message.id), images: current.images.filter(image => image.id !== message.id) } : current)
           }
         }
-        const clearTypingPeer = (peerId: string) => { const timer = typingTimers.current.get(peerId); if (timer) window.clearTimeout(timer); typingTimers.current.delete(peerId); setTypingPeerIds(current => current.filter(id => id !== peerId)) }
-        const receiveTyping = (message: unknown, peerId: string) => {
-          if (dataSaverRef.current) return
-          const session = sessions.current.get(peerId)
-          if (!session || session.status !== 'connected' || !message || typeof message !== 'object' || typeof (message as TypingMessage).active !== 'boolean') return
-          if (!(message as TypingMessage).active) { clearTypingPeer(peerId); return }
-          setTypingPeerIds(current => current.includes(peerId) ? current : [...current, peerId])
-          const previousTimer = typingTimers.current.get(peerId)
-          if (previousTimer) window.clearTimeout(previousTimer)
-          typingTimers.current.set(peerId, window.setTimeout(() => clearTypingPeer(peerId), TYPING_TIMEOUT))
-        }
-        typing.onMessage = (message, { peerId }) => receiveTyping(message, peerId)
-        sendTypingRef.current = active => {
-          if (dataSaverRef.current) return
-          const now = Date.now()
-          if (active === typingActive.current && (!active || now - typingLastSentAt.current < TYPING_REFRESH_INTERVAL)) return
-          typingActive.current = active
-          typingLastSentAt.current = now
-          const recipients = [...sessions.current.values()].filter(session => session.status === 'connected' && !dataSaverPeerIds.current.has(session.peerId))
-          void Promise.all(recipients.map(session => typing.send({ active }, { target: session.peerId })))
-        }
         const hello = (peerId: string) => {
           void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId })
           if (dataSaverRef.current) void control.send({ v: 2, type: 'data-saver', enabled: true }, { target: peerId })
@@ -234,7 +208,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           setState(current => current === 'waiting' ? 'peer-found' : current)
           if (!joined.current) void access.send({ type: 'join-request', name: nameRef.current, deviceType: inferDeviceType(), token: ownJoinToken.current }, { target: peerId })
         }
-        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; clearTypingPeer(peerId); joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); dataSaverPeerIds.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) recover(); else updateConnectionState() }
+        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) recover(); else updateConnectionState() }
         access.onMessage = (message, { peerId }) => {
           if (stopped || isBlocked(peerId) || !message || typeof message !== 'object') { rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId)
@@ -268,68 +242,56 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         control.onMessage = (raw, { peerId }) => {
           const message = parseMessage(raw); if (!message || stopped || isBlocked(peerId)) { if (!message) rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId); if (!session || !['authenticated', 'connected'].includes(session.status)) return
-          if (message.type === 'data-saver') { if (message.enabled) dataSaverPeerIds.current.add(peerId); else dataSaverPeerIds.current.delete(peerId); return }
+          if (message.type === 'data-saver') return
           if (message.type === 'kick-notice') { if (!isCreator) { setState('kicked'); void room?.leave() }; return }
           if (message.type === 'hello') { const wasConnected = session.status === 'connected', previousName = session.displayName; session.displayName = message.name; session.deviceType = message.deviceType; session.status = 'connected'; hadConnectedPeer = true; if (!wasConnected) { addSystemEntry(uid(), `${message.name} joined the Beam.`); if (canvasRef.current) void canvasSendRef.current?.({ type: 'sync', canvas: canvasRef.current }, peerId) } else if (previousName !== message.name) addSystemEntry(uid(), `${previousName} changed their nickname to ${message.name}.`); if (recoveryTimer) { clearTimeout(recoveryTimer); recoveryTimer = undefined }; syncPeers(); updateConnectionState(); return }
           if (session.status !== 'connected') return
           if (message.type === 'system-event') { if (message.event === 'nickname-changed') { session.displayName = message.nextName!; syncPeers(); addSystemEntry(`${peerId}:${message.id}`, `${message.previousName} changed their nickname to ${message.nextName}.`, message.createdAt) } else if (message.enabled !== undefined) addSystemEntry(`${peerId}:${message.id}`, `${peerName(peerId)} changed the setting: Free for all ${message.enabled ? 'enabled' : 'disabled'}.`, message.createdAt); return }
           if (message.type === 'item') { setFeed(current => [{ id: `${peerId}:${message.item.id}`, kind: message.item.kind, value: message.item.value, url: message.item.kind === 'link' ? message.item.value : undefined, sender: peerName(peerId), createdAt: message.item.createdAt, received: true }, ...current]); return }
           const key = incomingKey(peerId, message.transferId)
-          if (message.type === 'file-offer') { if (dataSaverRef.current) { void send({ v: 2, type: 'file-decline', transferId: message.transferId }, peerId); return }; if (incoming.current.size >= MAX_ACTIVE_TRANSFERS || incoming.current.has(key)) return; const recordId = key; incoming.current.set(key, { recordId, offer: message, bytes: 0, peerId, accepted: false }); setTransfers(current => [{ id: recordId, transferId: message.transferId, peerId, name: message.name, size: message.size, mimeType: message.mimeType, sender: peerName(peerId), createdAt: Date.now(), direction: 'receiving', status: 'offered', progress: 0, speed: 0 }, ...current]); return }
+          if (message.type === 'file-offer') { if (incoming.current.size >= MAX_ACTIVE_TRANSFERS || incoming.current.has(key)) return; const recordId = key; incoming.current.set(key, { recordId, offer: message, bytes: 0, peerId, accepted: false }); setTransfers(current => [{ id: recordId, transferId: message.transferId, peerId, name: message.name, size: message.size, mimeType: message.mimeType, sender: peerName(peerId), createdAt: Date.now(), direction: 'receiving', status: 'offered', progress: 0, speed: 0 }, ...current]); return }
           if (message.type === 'file-accept') { const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (!transfer || !recipient || recipient.status !== 'offered') return; const controller = new AbortController(); recipient.abortController = controller; recipient.status = 'transferring'; updateOutgoingRecord(transfer); void sendFile({ id: transfer.id, file: transfer.file, peerId, sendChunk: (value, target) => chunks.send(value, { target }), sendControl: send, signal: controller.signal, report: (bytesSent, metrics) => { recipient.bytesSent = bytesSent; updateOutgoingRecord(transfer, metrics) } }).then(() => { recipient.abortController = undefined }).catch(() => { if (!isRecipientTerminal(recipient.status)) { recipient.status = controller.signal.aborted ? 'cancelled' : 'failed'; recipient.abortController = undefined; updateOutgoingRecord(transfer) } }); return }
           if (message.type === 'file-decline' || message.type === 'file-cancel') { const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (transfer && recipient && !isRecipientTerminal(recipient.status)) { recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = message.type === 'file-decline' ? 'rejected' : 'cancelled'; updateOutgoingRecord(transfer) }; const received = incoming.current.get(key); if (received) { incoming.current.delete(key); updateTransfer(received.recordId, { status: message.type === 'file-decline' ? 'declined' : 'cancelled' }) }; return }
           if (message.type === 'file-complete') { const received = incoming.current.get(key); if (received?.accepted && received.bytes === received.offer.size) return; const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (transfer && recipient && recipient.status === 'transferring' && recipient.bytesSent === transfer.file.size) { recipient.status = 'completed'; recipient.abortController = undefined; updateOutgoingRecord(transfer) } }
         }
-        chunks.onMessage = (raw, { peerId }) => { const frame = decodeChunk(raw); if (!frame || isBlocked(peerId)) { rejectInvalid(peerId); return }; if (dataSaverRef.current) return; const transfer = incoming.current.get(incomingKey(peerId, frame.transferId)); if (!transfer || !transfer.accepted || !transfer.chunks || frame.index !== transfer.chunks.length || frame.index >= transfer.offer.totalChunks) { rejectInvalid(peerId); return }; const expected = Math.min(CHUNK_SIZE, transfer.offer.size - frame.index * CHUNK_SIZE); if (frame.payload.byteLength !== expected || transfer.bytes + expected > transfer.offer.size) { rejectInvalid(peerId); return }; transfer.chunks.push(frame.payload); transfer.bytes += expected; const measurement = (transfer.meter ??= createTransferMeter())(transfer.bytes), now = performance.now(); if (shouldReportProgress(transfer.lastReportedAt ?? 0, now) || transfer.bytes === transfer.offer.size) { transfer.lastReportedAt = now; updateTransfer(transfer.recordId, { status: 'active', progress: transfer.offer.size ? transfer.bytes / transfer.offer.size : 1, speed: measurement.speed, averageSpeed: measurement.averageSpeed, peakSpeed: measurement.peakSpeed, elapsedMs: measurement.elapsedMs }) }; if (transfer.bytes !== transfer.offer.size) return; const objectUrl = URL.createObjectURL(new Blob(transfer.chunks, { type: transfer.offer.mimeType })); updateTransfer(transfer.recordId, { status: 'complete', progress: 1 }); setFeed(current => [{ id: transfer.recordId, kind: 'file', value: transfer.offer.name, size: transfer.offer.size, sender: peerName(peerId), createdAt: Date.now(), received: true, objectUrl }, ...current]); incoming.current.delete(incomingKey(peerId, frame.transferId)); void send({ v: 2, type: 'file-complete', transferId: frame.transferId }, peerId) }
+        chunks.onMessage = (raw, { peerId }) => { const frame = decodeChunk(raw); if (!frame || isBlocked(peerId)) { rejectInvalid(peerId); return }; const transfer = incoming.current.get(incomingKey(peerId, frame.transferId)); if (!transfer || !transfer.accepted || !transfer.chunks || frame.index !== transfer.chunks.length || frame.index >= transfer.offer.totalChunks) { rejectInvalid(peerId); return }; const expected = Math.min(CHUNK_SIZE, transfer.offer.size - frame.index * CHUNK_SIZE); if (frame.payload.byteLength !== expected || transfer.bytes + expected > transfer.offer.size) { rejectInvalid(peerId); return }; transfer.chunks.push(frame.payload); transfer.bytes += expected; const measurement = (transfer.meter ??= createTransferMeter())(transfer.bytes), now = performance.now(); if (shouldReportProgress(transfer.lastReportedAt ?? 0, now) || transfer.bytes === transfer.offer.size) { transfer.lastReportedAt = now; updateTransfer(transfer.recordId, { status: 'active', progress: transfer.offer.size ? transfer.bytes / transfer.offer.size : 1, speed: measurement.speed, averageSpeed: measurement.averageSpeed, peakSpeed: measurement.peakSpeed, elapsedMs: measurement.elapsedMs }) }; if (transfer.bytes !== transfer.offer.size) return; const objectUrl = URL.createObjectURL(new Blob(transfer.chunks, { type: transfer.offer.mimeType })); updateTransfer(transfer.recordId, { status: 'complete', progress: 1 }); setFeed(current => [{ id: transfer.recordId, kind: 'file', value: transfer.offer.name, size: transfer.offer.size, sender: peerName(peerId), createdAt: Date.now(), received: true, objectUrl }, ...current]); incoming.current.delete(incomingKey(peerId, frame.transferId)); void send({ v: 2, type: 'file-complete', transferId: frame.transferId }, peerId) }
         if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) { void room?.leave(); setState('not-found') } }, NOT_FOUND_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; sendTypingRef.current(false); typingActive.current = false; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const timer of typingTimers.current.values()) window.clearTimeout(timer); typingTimers.current.clear(); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendTypingRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer, connectionAttempt, addSystemEntry])
 
-  const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim().slice(0, dataSaverRef.current ? 1_000 : 8_000), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
-  const offerFile = useCallback((file: File) => { if (dataSaverRef.current || !Number.isFinite(file.size) || file.size < 0 || file.size > MAX_FILE_SIZE) return; const recipients = [...sessions.current.values()].filter(session => session.status === 'connected' && !dataSaverPeerIds.current.has(session.peerId)); if (!recipients.length) return; const id = uid(), offer: FileOffer = { v: 2, type: 'file-offer', transferId: id, name: file.name.slice(0, 255), size: file.size, mimeType: (file.type || 'application/octet-stream').slice(0, 127), totalChunks: totalChunksFor(file.size) }; const transfer: OutgoingTransfer = { id, file, recipients: new Map(recipients.map(session => [session.peerId, { peerId: session.peerId, status: 'offered', bytesSent: 0 }])) }; outgoing.current.set(id, transfer); void Promise.all(recipients.map(session => send(offer, session.peerId))); setTransfers(current => [{ id, transferId: id, name: offer.name, size: file.size, mimeType: offer.mimeType, sender: 'You', createdAt: Date.now(), direction: 'sending', status: 'offered', progress: 0, speed: 0, file }, ...current]) }, [send])
+  const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim().slice(0, 8_000), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
+  const offerFile = useCallback((file: File) => { if (!Number.isFinite(file.size) || file.size < 0 || file.size > MAX_FILE_SIZE) return; const recipients = [...sessions.current.values()].filter(session => session.status === 'connected'); if (!recipients.length) return; const id = uid(), offer: FileOffer = { v: 2, type: 'file-offer', transferId: id, name: file.name.slice(0, 255), size: file.size, mimeType: (file.type || 'application/octet-stream').slice(0, 127), totalChunks: totalChunksFor(file.size) }; const transfer: OutgoingTransfer = { id, file, recipients: new Map(recipients.map(session => [session.peerId, { peerId: session.peerId, status: 'offered', bytesSent: 0 }])) }; outgoing.current.set(id, transfer); void Promise.all(recipients.map(session => send(offer, session.peerId))); setTransfers(current => [{ id, transferId: id, name: offer.name, size: file.size, mimeType: offer.mimeType, sender: 'You', createdAt: Date.now(), direction: 'sending', status: 'offered', progress: 0, speed: 0, file }, ...current]) }, [send])
   const replyToOffer = useCallback((recordId: string, accept: boolean) => { const transfer = [...incoming.current.values()].find(value => value.recordId === recordId); if (!transfer || transfer.accepted) return; transfer.accepted = accept; if (accept) transfer.chunks = []; else incoming.current.delete(incomingKey(transfer.peerId, transfer.offer.transferId)); void send({ v: 2, type: accept ? 'file-accept' : 'file-decline', transferId: transfer.offer.transferId }, transfer.peerId); updateTransfer(recordId, { status: accept ? 'active' : 'declined' }) }, [send, updateTransfer])
   const cancelTransferForPeer = useCallback((transferId: string, peerId: string) => { const transfer = outgoing.current.get(transferId), recipient = transfer?.recipients.get(peerId); if (!transfer || !recipient || isRecipientTerminal(recipient.status)) return; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; void send({ v: 2, type: 'file-cancel', transferId }, peerId); updateTransfer(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { outgoing.current.delete(transfer.id); updateTransfer(transfer.id, { file: undefined }) } }, [send, updateTransfer])
   const cancelTransfer = useCallback((recordId: string) => { const incomingTransfer = [...incoming.current.values()].find(value => value.recordId === recordId); if (incomingTransfer) { incoming.current.delete(incomingKey(incomingTransfer.peerId, incomingTransfer.offer.transferId)); void send({ v: 2, type: 'file-cancel', transferId: incomingTransfer.offer.transferId }, incomingTransfer.peerId); updateTransfer(recordId, { status: 'cancelled' }); return }; const transfer = outgoing.current.get(recordId); if (transfer) for (const peerId of transfer.recipients.keys()) cancelTransferForPeer(recordId, peerId) }, [cancelTransferForPeer, send, updateTransfer])
-  const kickPeer = useCallback((peerId: string) => { if (!isCreator) return; const session = sessions.current.get(peerId); if (session) session.status = 'kicked'; const timer = typingTimers.current.get(peerId); if (timer) window.clearTimeout(timer); typingTimers.current.delete(peerId); setTypingPeerIds(current => current.filter(id => id !== peerId)); endTransfersForKick(outgoing.current, peerId, updateTransfer); void send({ v: 2, type: 'kick-notice' }, peerId); setPeers(current => current.filter(peer => peer.id !== peerId)) }, [isCreator, send, updateTransfer])
+  const kickPeer = useCallback((peerId: string) => { if (!isCreator) return; const session = sessions.current.get(peerId); if (session) session.status = 'kicked'; endTransfersForKick(outgoing.current, peerId, updateTransfer); void send({ v: 2, type: 'kick-notice' }, peerId); setPeers(current => current.filter(peer => peer.id !== peerId)) }, [isCreator, send, updateTransfer])
   const admitPeer = useCallback((peerId: string) => admitPeerRef.current(peerId), [])
   const rename = useCallback((nextName: string) => { const previousName = nameRef.current; if (!nextName || nextName === previousName) return; nameRef.current = nextName; const event = { v: 2, type: 'system-event', id: uid(), event: 'nickname-changed', previousName, nextName, createdAt: Date.now() } as const; void send(event); addSystemEntry(event.id, `You changed your nickname to ${nextName}.`, event.createdAt); sendHelloRef.current() }, [addSystemEntry, send])
   const setFreeForAll = useCallback((enabled: boolean) => { if (!isCreator || enabled === freeForAllRef.current) return; freeForAllRef.current = enabled; setFreeForAllState(enabled); const event = { v: 2, type: 'system-event', id: uid(), event: 'setting-changed', setting: 'free-for-all', enabled, createdAt: Date.now() } as const; void send(event); addSystemEntry(event.id, `You changed the setting: Free for all ${enabled ? 'enabled' : 'disabled'}.`, event.createdAt) }, [addSystemEntry, isCreator, send])
-  useEffect(() => {
-    void send({ v: 2, type: 'data-saver', enabled: dataSaver })
-    if (!dataSaver) return
-    sendTypingRef.current(false)
-    setTypingPeerIds([])
-    setCanvas(null)
-    for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) {
-      if (!isRecipientTerminal(recipient.status)) { recipient.abortController?.abort(); recipient.status = 'cancelled'; void send({ v: 2, type: 'file-cancel', transferId: transfer.id }, recipient.peerId) }
-    }
-    for (const [key, transfer] of incoming.current) { incoming.current.delete(key); void send({ v: 2, type: 'file-cancel', transferId: transfer.offer.transferId }, transfer.peerId); updateTransfer(transfer.recordId, { status: 'cancelled' }) }
-  }, [dataSaver, send, updateTransfer])
   const startCanvas = useCallback(() => {
-    if (dataSaverRef.current) return
     if (canvasRef.current) return canvasRef.current.id
     const next: CanvasSession = { id: uid(), name: `${nameRef.current}'s Canvas`, starter: nameRef.current, createdAt: Date.now(), strokes: [], images: [] }
     setCanvas(next); setCanvasTraffic({ sent: 0, received: 0 }); setFeed(current => [{ id: `canvas:${next.id}`, kind: 'canvas', value: next.name, sender: 'You', createdAt: next.createdAt }, ...current])
     void canvasSendRef.current?.({ type: 'start', canvas: next })
     return next.id
   }, [])
-  const joinCanvas = useCallback(() => { if (!dataSaverRef.current && canvasRef.current) void canvasSendRef.current?.({ type: 'sync-request', canvasId: canvasRef.current.id }) }, [])
+  const joinCanvas = useCallback(() => { if (canvasRef.current) void canvasSendRef.current?.({ type: 'sync-request', canvasId: canvasRef.current.id }) }, [])
   const renameCanvas = useCallback((nextName: string) => {
     const current = canvasRef.current
     const name = nextName.trim().slice(0, 80)
-    if (dataSaverRef.current || !current || current.starter !== nameRef.current || !name || name === current.name) return
+    if (!current || current.starter !== nameRef.current || !name || name === current.name) return
     setCanvas({ ...current, name })
     setFeed(items => items.map(item => item.id === `canvas:${current.id}` ? { ...item, value: name } : item))
     void canvasSendRef.current?.({ type: 'rename', canvasId: current.id, name })
   }, [])
-  const addCanvasStroke = useCallback((stroke: CanvasStroke, broadcast = true) => { const current = canvasRef.current; if (dataSaverRef.current || !current) return; const index = current.strokes.findIndex(item => item.id === stroke.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, stroke] }); else if (current.strokes[index].points.length <= stroke.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? stroke : item) }); if (broadcast) void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke }) }, [])
-  const startCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (dataSaverRef.current || !current || !stroke.points.length || current.strokes.some(item => item.id === stroke.id)) return; const point = compactPoint(stroke.points[0]), { points: _points, ...header } = stroke; setCanvas({ ...current, strokes: [...current.strokes, { ...stroke, points: [point] }] }); void canvasSendRef.current?.({ type: 'stroke-start', canvasId: current.id, stroke: header, point }) }, [])
-  const appendCanvasStrokePoints = useCallback((id: string, points: CanvasPoint[]) => { const current = canvasRef.current; if (dataSaverRef.current || !current || !points.length) return; void canvasSendRef.current?.({ type: 'stroke-points', canvasId: current.id, id, points: compactPoints(points) }) }, [])
-  const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (dataSaverRef.current || !current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
-  const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (dataSaverRef.current || !current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeerIds, setTyping, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  const addCanvasStroke = useCallback((stroke: CanvasStroke, broadcast = true) => { const current = canvasRef.current; if (!current) return; const compacted = { ...stroke, points: stroke.points.map(point => compactPoint(point, dataSaverRef.current)) }; const index = current.strokes.findIndex(item => item.id === compacted.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, compacted] }); else if (current.strokes[index].points.length <= compacted.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? compacted : item) }); if (broadcast) void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke: compacted }) }, [])
+  const startCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current || !stroke.points.length || current.strokes.some(item => item.id === stroke.id)) return; const point = compactPoint(stroke.points[0], dataSaverRef.current), { points: _points, ...header } = stroke; setCanvas({ ...current, strokes: [...current.strokes, { ...stroke, points: [point] }] }); void canvasSendRef.current?.({ type: 'stroke-start', canvasId: current.id, stroke: header, point }) }, [])
+  const appendCanvasStrokePoints = useCallback((id: string, points: CanvasPoint[]) => { const current = canvasRef.current; if (!current || !points.length) return; void canvasSendRef.current?.({ type: 'stroke-points', canvasId: current.id, id, points: compactPoints(points, dataSaverRef.current) }) }, [])
+  const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
+  const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }
