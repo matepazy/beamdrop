@@ -11,6 +11,7 @@ export function WaitingPage({
   peers,
   password,
   isCreator,
+  quickStartCanvas,
   passwordRequired,
   onPasswordChange,
   onCopy,
@@ -26,6 +27,7 @@ export function WaitingPage({
   peers: number
   password: string
   isCreator: boolean
+  quickStartCanvas: boolean
   passwordRequired: boolean
   onPasswordChange(password: string): void
   onCopy(value: string): void
@@ -41,8 +43,8 @@ export function WaitingPage({
 
   const joinUrl = useMemo(
     () =>
-      `${location.origin}${location.pathname}#/join/${encodeURIComponent(secret)}`,
-    [secret],
+      `${location.origin}${location.pathname}${quickStartCanvas ? '?quickstart=canvas' : ''}#/join/${encodeURIComponent(secret)}`,
+    [quickStartCanvas, secret],
   )
 
   useEffect(() => {
@@ -312,6 +314,7 @@ export function WaitingPage({
         <div style={{ pointerEvents: 'auto' }}>
           <QrDialog
             secret={secret}
+            quickStartCanvas={quickStartCanvas}
             onClose={closeQr}
           />
         </div>
@@ -322,9 +325,11 @@ export function WaitingPage({
 
 function QrDialog({
   secret,
+  quickStartCanvas,
   onClose,
 }: {
   secret: string
+  quickStartCanvas: boolean
   onClose(): void
 }) {
   const [dataUrl, setDataUrl] =
@@ -333,8 +338,8 @@ function QrDialog({
 
   const joinUrl = useMemo(
     () =>
-      `${location.origin}${location.pathname}#/join/${encodeURIComponent(secret)}`,
-    [secret],
+      `${location.origin}${location.pathname}${quickStartCanvas ? '?quickstart=canvas' : ''}#/join/${encodeURIComponent(secret)}`,
+    [quickStartCanvas, secret],
   )
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion'
 import type { MotionProps } from 'framer-motion'
-import { ArrowDown, ArrowRight, Plus } from 'lucide-react'
+import { ArrowDown, ArrowRight, Paintbrush, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { generatePassphrase, isValidSecret, normalizeSecret, secretFromJoinInput } from '../lib/codes'
@@ -8,9 +8,11 @@ import { InfoMenu, Logo } from './Brand'
 
 export function LandingPage({
   onCreate,
+  onCreateCanvas,
   onJoin,
 }: {
   onCreate(secret: string, password: string): void
+  onCreateCanvas(secret: string, password: string): void
   onJoin(secret: string): void
 }) {
   const [join, setJoin] = useState('')
@@ -18,6 +20,7 @@ export function LandingPage({
   const details = useRef<HTMLElement>(null)
   const reduceMotion = useReducedMotion()
   const create = () => onCreate(generatePassphrase(), '')
+  const createCanvas = () => onCreateCanvas(generatePassphrase(), '')
   const joinSecret = secretFromJoinInput(join)
   const isJoinValid = isValidSecret(joinSecret)
 
@@ -236,6 +239,49 @@ export function LandingPage({
               Nothing is stored on our servers.
             </p>
           </motion.article>
+        </motion.div>
+      </section>
+
+      <section className="canvas-feature" aria-labelledby="canvas-feature-title">
+        <motion.div className="canvas-feature__copy" {...enter()}>
+          <p className="canvas-feature__eyebrow">
+            <Paintbrush size={16} aria-hidden="true" />
+            New: Canvas
+          </p>
+
+          <h2 id="canvas-feature-title">A shared canvas, in the same private Beam.</h2>
+
+          <p>
+            Sketch ideas, mark up a thought, and stay in sync without leaving the room.
+          </p>
+
+          <button className="primary canvas-feature__cta" onClick={createCanvas}>
+            Try Canvas Now
+            <ArrowRight size={18} aria-hidden="true" />
+          </button>
+        </motion.div>
+
+        <motion.div className="canvas-feature__preview" aria-hidden="true" {...enter(0.1)}>
+          <div className="canvas-feature__window-bar">
+            <span className="canvas-feature__window-title">Liz's Canvas</span>
+            <span className="canvas-feature__avatars"><b>L</b><b>M</b></span>
+          </div>
+          <div className="canvas-feature__workspace">
+            <div className="canvas-feature__tools"><i /><i /><i /><i /></div>
+            <div className="canvas-feature__drawing">
+              <svg className="canvas-feature__marks" viewBox="0 0 600 360" fill="none">
+                <path d="M90 228C157 168 187 104 269 112C342 120 345 185 420 190C471 193 511 162 532 128" stroke="#455EF5" strokeWidth="9" strokeLinecap="round" />
+                <path d="M121 286C174 241 216 236 255 264C292 290 330 302 376 276" stroke="#FF704D" strokeWidth="7" strokeLinecap="round" />
+                <path d="M280 105L293 92L301 111" stroke="#455EF5" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="143" cy="154" r="14" stroke="#171717" strokeWidth="6" />
+                <circle cx="143" cy="154" r="5" fill="#171717" />
+              </svg>
+              <div className="canvas-feature__quote">Make sharing<br />feel immediate.<small>— Liz</small></div>
+              <div className="canvas-feature__note"><strong>Next</strong><span>Try a shared sketch.</span></div>
+              <div className="canvas-feature__cursor canvas-feature__cursor--one"><i /> <span>Liz</span></div>
+              <div className="canvas-feature__cursor canvas-feature__cursor--two"><i /> <span>Mate</span></div>
+            </div>
+          </div>
         </motion.div>
       </section>
 

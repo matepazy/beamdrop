@@ -60,10 +60,15 @@ export function App() {
   const go = (next: Exclude<View, { mode: 'page' }>) => {
     setView(next)
 
-    location.hash =
-      next.mode === 'home'
-        ? ''
-        : `/join/${encodeURIComponent(next.secret)}`
+    if (next.mode === 'home') {
+      const params = new URLSearchParams(location.search)
+      params.delete('quickstart')
+      history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`)
+      location.hash = ''
+      return
+    }
+
+    location.hash = `/join/${encodeURIComponent(next.secret)}`
   }
 
   const createBeam = (secret: string, password: string) => {
@@ -86,6 +91,15 @@ export function App() {
       setLaunching(false)
     }, delay)
   }
+
+  const createCanvasBeam = (secret: string, password: string) => {
+    const params = new URLSearchParams(location.search)
+    params.set('quickstart', 'canvas')
+    history.replaceState(null, '', `${location.pathname}?${params}${location.hash}`)
+    createBeam(secret, password)
+  }
+
+  const quickStartCanvas = new URLSearchParams(location.search).get('quickstart') === 'canvas'
 
   return (
     <main
@@ -121,6 +135,7 @@ export function App() {
           <LandingPage
             key="home"
             onCreate={createBeam}
+            onCreateCanvas={createCanvasBeam}
             onJoin={(secret) =>
               go({
                 mode: 'waiting',
@@ -142,6 +157,7 @@ export function App() {
             password={view.password}
             isCreator={view.isCreator}
             displayName={displayName}
+            quickStartCanvas={quickStartCanvas}
             onRename={(name) => {
               setDisplayName(name)
             }}

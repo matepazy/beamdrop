@@ -19,6 +19,7 @@ export function ConnectedPage({
   password,
   isCreator,
   displayName,
+  quickStartCanvas,
   onRename,
   onEnd,
   onPasswordChange,
@@ -27,6 +28,7 @@ export function ConnectedPage({
   password: string
   isCreator: boolean
   displayName: string
+  quickStartCanvas: boolean
   onRename(name: string): void
   onEnd(): void
   onPasswordChange(password: string): void
@@ -71,6 +73,7 @@ export function ConnectedPage({
   const conversationRef = useRef<HTMLElement>(null)
   const dangerousFileDialogRef = useRef<HTMLElement>(null)
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
+  const quickStartCanvasHandled = useRef(false)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
   const canvasConditions = [
@@ -113,6 +116,23 @@ export function ConnectedPage({
     query.addEventListener('change', updateViewport)
     return () => query.removeEventListener('change', updateViewport)
   }, [])
+
+  useEffect(() => {
+    if (!quickStartCanvas || !connected || quickStartCanvasHandled.current) return
+
+    if (isCreator) {
+      beam.startCanvas()
+      setCanvasOpen(true)
+      quickStartCanvasHandled.current = true
+      return
+    }
+
+    if (beam.canvas) {
+      beam.joinCanvas()
+      setCanvasOpen(true)
+      quickStartCanvasHandled.current = true
+    }
+  }, [beam.canvas, beam.joinCanvas, beam.startCanvas, connected, isCreator, quickStartCanvas])
 
   useEffect(() => {
     if (!attachmentsOpen) return
@@ -323,6 +343,7 @@ export function ConnectedPage({
         peers={beam.peers.length}
         password={password}
         isCreator={isCreator}
+        quickStartCanvas={quickStartCanvas}
         passwordRequired={beam.passwordRequired}
         onPasswordChange={onPasswordChange}
         onCopy={copy}
@@ -1055,9 +1076,9 @@ function FeedCard({
   if (item.kind === 'canvas') {
     return <div className={`message-stack ${item.received ? 'message-stack--received' : 'message-stack--sent'}`}>
       {item.received && <span className="message-sender">{item.sender}</span>}
-      <article className={`feed-item feed-item--canvas ${item.received ? 'received-message' : 'sent-message'}`}>
+      <article className={`feed-item feed-item--canvas ${item.received ? 'received-message' : 'sent-message'}`} data-time={timestamp} title={timestamp}>
         <div><span className="feed-item--canvas__icon"><Paintbrush size={17} /></span><strong>{item.value}</strong><span>{item.received ? `${item.sender} started a canvas` : 'You started a canvas'}</span></div>
-        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}>{item.received ? 'Join canvas' : 'Open canvas'}</button>}
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin} aria-label={item.received ? 'Join canvas' : 'Open canvas'}><span className="canvas-invite__action-full">{item.received ? 'Join canvas' : 'Open canvas'}</span><span className="canvas-invite__action-compact" aria-hidden="true">{item.received ? 'Join' : 'Open'}</span></button>}
       </article>
     </div>
   }
