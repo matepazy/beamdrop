@@ -25,3 +25,23 @@ describe('system event protocol messages', () => {
     })).toBeNull()
   })
 })
+
+describe('data saver protocol messages', () => {
+  it('accepts a peer-specific data saver capability', () => {
+    expect(parseMessage({ v: 2, type: 'data-saver', enabled: true })).toMatchObject({ type: 'data-saver', enabled: true })
+  })
+
+  it('rejects an invalid data saver capability', () => {
+    expect(parseMessage({ v: 2, type: 'data-saver', enabled: 'yes' })).toBeNull()
+  })
+})
+
+describe('typing protocol messages', () => {
+  it('accepts a boolean typing signal', () => {
+    expect(parseMessage({ v: 2, type: 'typing', active: true })).toMatchObject({ type: 'typing', active: true })
+  })
+
+  it('rejects a malformed typing signal', () => {
+    expect(parseMessage({ v: 2, type: 'typing', active: 'yes' })).toBeNull()
+  })
+})

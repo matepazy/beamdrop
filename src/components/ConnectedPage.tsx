@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, X } from 'lucide-react'
+import { Activity, Check, ChevronDown, Clipboard, Copy, Download, Eye, EyeOff, FileText, Gamepad2, LoaderCircle, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -10,6 +10,7 @@ import { connectionHealth } from '../lib/rtcDiagnostics'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
+import { CanvasBoard } from './CanvasBoard'
 
 const PASSWORD_FEATURE_ENABLED = false
 
@@ -18,6 +19,7 @@ export function ConnectedPage({
   password,
   isCreator,
   displayName,
+  quickStartCanvas,
   onRename,
   onEnd,
   onPasswordChange,
@@ -26,14 +28,17 @@ export function ConnectedPage({
   password: string
   isCreator: boolean
   displayName: string
+  quickStartCanvas: boolean
   onRename(name: string): void
   onEnd(): void
   onPasswordChange(password: string): void
 }) {
-  const beam = useBeam(secret, password, displayName, isCreator)
+  const [dataSaver, setDataSaver] = useState(() => localStorage.getItem('beam-data-saver') === 'true')
+  const beam = useBeam(secret, password, displayName, isCreator, dataSaver)
 
   const [qrOpen, setQrOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [dataSaverWarningOpen, setDataSaverWarningOpen] = useState(false)
   const [roomCodeVisible, setRoomCodeVisible] = useState(false)
   const [metricsOpen, setMetricsOpen] = useState(false)
   const [diagnostics, setDiagnostics] = useState<RtcDiagnostics[]>([])
@@ -45,6 +50,12 @@ export function ConnectedPage({
   const [attachmentsOpen, setAttachmentsOpen] = useState(false)
   const [participantsExpanded, setParticipantsExpanded] = useState(false)
   const [pendingDangerousFile, setPendingDangerousFile] = useState<TransferRecord | null>(null)
+  const [pendingDataFiles, setPendingDataFiles] = useState<File[] | null>(null)
+  const [pendingDataReceive, setPendingDataReceive] = useState<TransferRecord | null>(null)
+  const [canvasOpen, setCanvasOpen] = useState(false)
+  const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
+  const [gamesComingSoonOpen, setGamesComingSoonOpen] = useState(false)
+  const [compactCanvasViewport, setCompactCanvasViewport] = useState(false)
 
   const [composerMode, setComposerMode] = useState<
     'text' | 'location'
@@ -63,13 +74,26 @@ export function ConnectedPage({
   const conversationRef = useRef<HTMLElement>(null)
   const dangerousFileDialogRef = useRef<HTMLElement>(null)
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
+  const gamesComingSoonDialogRef = useRef<HTMLElement>(null)
+  const gamesComingSoonTriggerRef = useRef<HTMLElement | null>(null)
+  const quickStartCanvasHandled = useRef(false)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
+  const canvasConditions = [
+    compactCanvasViewport
+      ? 'This screen is compact. Canvas works here, but a larger screen gives you more room to draw and navigate.'
+      : null,
+    beam.peers.length + 1 > 4
+      ? 'More than four people are in this Beam. Canvas updates may feel less responsive.'
+      : null,
+    health.tone !== 'good'
+      ? `${health.label}. Canvas is best on a stable, direct connection.`
+      : null,
+  ].filter((condition): condition is string => Boolean(condition))
   const activityCount =
     beam.feed.length +
     beam.transfers.length +
-    beam.pendingPeers.length +
-    beam.typingPeerIds.length
+    beam.pendingPeers.length
 
   useLayoutEffect(() => {
     if (connected && conversationRef.current) {
@@ -87,6 +111,31 @@ export function ConnectedPage({
   useEffect(() => {
     setNameDraft(displayName)
   }, [displayName])
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px), (max-height: 560px)')
+    const updateViewport = () => setCompactCanvasViewport(query.matches)
+    updateViewport()
+    query.addEventListener('change', updateViewport)
+    return () => query.removeEventListener('change', updateViewport)
+  }, [])
+
+  useEffect(() => {
+    if (!quickStartCanvas || !connected || quickStartCanvasHandled.current) return
+
+    if (isCreator) {
+      beam.startCanvas()
+      setCanvasOpen(true)
+      quickStartCanvasHandled.current = true
+      return
+    }
+
+    if (beam.canvas) {
+      beam.joinCanvas()
+      setCanvasOpen(true)
+      quickStartCanvasHandled.current = true
+    }
+  }, [beam.canvas, beam.joinCanvas, beam.startCanvas, connected, isCreator, quickStartCanvas])
 
   useEffect(() => {
     if (!attachmentsOpen) return
@@ -171,7 +220,48 @@ export function ConnectedPage({
     }
   }, [pendingDangerousFile])
 
+  useEffect(() => {
+    if (!gamesComingSoonOpen) return
+
+    const dialog = gamesComingSoonDialogRef.current
+    const previousFocus = gamesComingSoonTriggerRef.current
+    const focusable = () => dialog
+      ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      : []
+
+    requestAnimationFrame(() => focusable()[0]?.focus())
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setGamesComingSoonOpen(false)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const controls = focusable()
+      if (!controls.length) return
+      const first = controls[0]
+      const last = controls.at(-1)!
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [gamesComingSoonOpen])
+
   const [onlyPeer] = beam.peers
+  const keepingConversationOpen = beam.hasConnected && ['waiting', 'peer-found', 'connecting', 'disconnected'].includes(beam.state)
   const recipient = beam.peers.length === 1
     ? onlyPeer?.name ?? 'this Beam'
     : beam.peers.length > 1
@@ -209,7 +299,6 @@ export function ConnectedPage({
   }
 
   const clearComposer = () => {
-    beam.setTyping(false)
     setComposer('')
     setPickedLocation(null)
     setComposerMode('text')
@@ -251,6 +340,14 @@ export function ConnectedPage({
     openComposer('location')
   }
 
+  const openGamesComingSoon = () => {
+    gamesComingSoonTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    setAttachmentsOpen(false)
+    setGamesComingSoonOpen(true)
+  }
+
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
       setShareStatus(
@@ -290,7 +387,7 @@ export function ConnectedPage({
     )
   }
 
-  if (!connected) {
+  if (!connected && !keepingConversationOpen) {
     return (
       <WaitingPage
         secret={secret}
@@ -298,6 +395,7 @@ export function ConnectedPage({
         peers={beam.peers.length}
         password={password}
         isCreator={isCreator}
+        quickStartCanvas={quickStartCanvas}
         passwordRequired={beam.passwordRequired}
         onPasswordChange={onPasswordChange}
         onCopy={copy}
@@ -314,15 +412,6 @@ export function ConnectedPage({
   const hasActivity =
     beam.transfers.length > 0 ||
     beam.feed.length > 0
-  const typingNames = beam.typingPeerIds
-    .map((peerId) => beam.peers.find((peer) => peer.id === peerId)?.name)
-    .filter((name): name is string => Boolean(name))
-  const typingLabel = typingNames.length === 1
-    ? `${typingNames[0]} is typing`
-    : typingNames.length === 2
-      ? `${typingNames[0]} and ${typingNames[1]} are typing`
-      : `${typingNames.length} people are typing`
-
   const completedReceivedFileIds = new Set(
     beam.feed
       .filter((item) => item.kind === 'file' && item.received)
@@ -359,16 +448,25 @@ export function ConnectedPage({
       : composer
 
   const sendMessage = () => {
-    if (!shareValue.trim()) return
+    if (!connected || !shareValue.trim()) return
 
     beam.sendItem(
       shareValue,
       isUrl(shareValue) ? 'link' : 'text',
     )
+    beam.setTyping(false)
     clearComposer()
   }
 
   const acceptFile = (transfer: TransferRecord) => {
+    if (dataSaver) {
+      setPendingDataReceive(transfer)
+      return
+    }
+    confirmFileReceive(transfer)
+  }
+
+  const confirmFileReceive = (transfer: TransferRecord) => {
     if (isPotentiallyDangerousFile(transfer.name)) {
       dangerousFileTriggerRef.current = document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -378,6 +476,36 @@ export function ConnectedPage({
     }
 
     beam.replyToOffer(transfer.id, true)
+  }
+
+  const setDataSaverMode = (enabled: boolean) => {
+    localStorage.setItem('beam-data-saver', String(enabled))
+    setDataSaver(enabled)
+    if (enabled) {
+      setAttachmentsOpen(false)
+      setComposerMode('text')
+      setPickedLocation(null)
+    }
+  }
+
+  const openCanvas = (action: 'start' | 'join') => {
+    if (dataSaver) { setCanvasWarning(action); return }
+    if (action === 'start') {
+      if (canvasConditions.length) { setCanvasWarning(action); return }
+      beam.startCanvas()
+      setCanvasOpen(true)
+      return
+    }
+    if (canvasConditions.length) { setCanvasWarning(action); return }
+    beam.joinCanvas()
+    setCanvasOpen(true)
+  }
+  const confirmCanvas = () => {
+    if (!canvasWarning) return
+    if (canvasWarning === 'start') beam.startCanvas()
+    else beam.joinCanvas()
+    setCanvasWarning(null)
+    setCanvasOpen(true)
   }
 
   return (
@@ -484,11 +612,11 @@ export function ConnectedPage({
       )}
 
       <section ref={conversationRef} className="conversation" aria-label="Conversation">
-        {hasActivity || beam.pendingPeers.length > 0 || typingNames.length > 0 ? (
+        {hasActivity || beam.pendingPeers.length > 0 ? (
           <div className="conversation-feed">
             {activity.map((entry) => entry.type === 'transfer' ? (
               <TransferCard key={entry.transfer.id} item={entry.transfer} onAccept={() => acceptFile(entry.transfer)} onDecline={() => beam.replyToOffer(entry.transfer.id, false)} onCancel={() => beam.cancelTransfer(entry.transfer.id)} />
-            ) : <FeedCard key={entry.item.id} item={entry.item} />)}
+            ) : <FeedCard key={entry.item.id} item={entry.item} dataSaver={dataSaver} onCanvasJoin={entry.item.kind === 'canvas' ? () => openCanvas('join') : undefined} />)}
             {beam.pendingPeers.length > 0 && (
               <div className="join-request-feed" role="status">
                 {beam.pendingPeers.map((peer) => (
@@ -504,18 +632,16 @@ export function ConnectedPage({
                 ))}
               </div>
             )}
-            {typingNames.length > 0 && (
-              <div className="typing-indicator" role="status" aria-live="polite" aria-atomic="true">
-                <span className="typing-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
-                <span>{typingLabel}</span>
-              </div>
-            )}
+            {beam.typingPeers.length > 0 && <TypingIndicator peers={beam.typingPeers} />}
           </div>
         ) : (
-          <div className="conversation-empty">
-            <span>Private conversation</span>
-            <p>Messages and attachments shared here disappear when this Beam ends.</p>
-          </div>
+          <>
+            <div className="conversation-empty">
+              <span>Private conversation</span>
+              <p>Messages and attachments shared here disappear when this Beam ends.</p>
+            </div>
+            {beam.typingPeers.length > 0 && <TypingIndicator peers={beam.typingPeers} />}
+          </>
         )}
       </section>
 
@@ -524,14 +650,33 @@ export function ConnectedPage({
         className="sr-only"
         type="file"
         multiple
-        onChange={(event) =>
-          Array.from(
-            event.target.files ?? [],
-          ).forEach(beam.offerFile)
-        }
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? [])
+          event.target.value = ''
+          if (!files.length) return
+          if (dataSaver) setPendingDataFiles(files)
+          else files.forEach(beam.offerFile)
+        }}
       />
 
-      <form className="chat-composer" onSubmit={(event) => {
+      {keepingConversationOpen ? (
+        <section className="reconnect-card" role="status" aria-live="polite" aria-atomic="true">
+          <div className="reconnect-card__heading">
+            <LoaderCircle size={17} aria-hidden="true" />
+            <div>
+              <strong>Waiting for a connection</strong>
+              <span>Share this code with someone to join this Beam. Your conversation history is kept until someone joins your Beam.</span>
+            </div>
+          </div>
+          <div className="reconnect-card__code-row">
+            <code>{secret}</code>
+            <button type="button" onClick={() => void copy(secret)}>
+              {copied ? <Check size={17} aria-hidden="true" /> : <Copy size={17} aria-hidden="true" />}
+              {copied ? 'Copied' : 'Copy code'}
+            </button>
+          </div>
+        </section>
+      ) : <form className="chat-composer" onSubmit={(event) => {
         event.preventDefault()
         sendMessage()
       }}>
@@ -553,40 +698,43 @@ export function ConnectedPage({
         ) : (
           <div className="chat-composer__text-row">
             <div className="attachment-actions" ref={attachmentActionsRef}>
-              <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
+              <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" disabled={!connected} onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
               {attachmentsOpen && <div className="attachment-menu" role="menu">
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
+                <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
+                <button type="button" role="menuitem" onClick={openGamesComingSoon}><Gamepad2 size={17} /> Games</button>
               </div>}
             </div>
             <textarea
               ref={composerInput}
               value={composer}
+              maxLength={8_000}
+              disabled={!connected}
               onChange={(event) => {
                 setComposer(event.target.value)
-                beam.setTyping(event.target.value.trim().length > 0)
+                beam.setTyping(Boolean(event.target.value.trim()))
                 resizeComposer(event.currentTarget)
               }}
               onBlur={() => beam.setTyping(false)}
-              onFocus={() => beam.setTyping(composer.trim().length > 0)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   sendMessage()
                 }
               }}
-              placeholder={`Message ${recipient}`}
+              placeholder={connected ? `Message ${recipient}` : 'Waiting for a connection…'}
               aria-label="Message"
             />
-            <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /></button>
+            <button className="send-message" disabled={!connected || !shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /></button>
           </div>
         )}
 
         {composerMode === 'location' && <div className="chat-composer__bottom">
-          <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send location"><Send size={18} /><span>Send</span></button>
+          <button className="send-message" disabled={!connected || !shareValue.trim()} type="submit" aria-label="Send location"><Send size={18} /><span>Send</span></button>
         </div>}
-      </form>
+      </form>}
 
       {shareStatus && (
         <p
@@ -596,6 +744,30 @@ export function ConnectedPage({
           {shareStatus}
         </p>
       )}
+
+      <AnimatePresence>
+        {canvasOpen && beam.canvas && <motion.div className="dialog-backdrop canvas-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <CanvasBoard canvas={beam.canvas} traffic={beam.canvasTraffic} presence={beam.canvasPresence} displayName={displayName} dataSaver={dataSaver} onClose={() => setCanvasOpen(false)} onRename={beam.renameCanvas} onStroke={beam.addCanvasStroke} onStrokeStart={beam.startCanvasStroke} onStrokePoints={beam.appendCanvasStrokePoints} onDrawing={beam.setCanvasDrawing} onImage={beam.addCanvasImage} onDelete={beam.deleteCanvasElement} />
+        </motion.div>}
+        {canvasWarning && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <section className="canvas-warning" role="dialog" aria-modal="true" aria-labelledby="canvas-warning-title">
+            <Paintbrush size={24} aria-hidden="true" />
+            <h2 id="canvas-warning-title">Check your canvas setup</h2>
+            {dataSaver && <p>Data saver will use fewer live drawing updates and stronger image compression after you {canvasWarning === 'start' ? 'create' : 'join'} this canvas.</p>}
+            {canvasConditions.map((condition) => <p key={condition}>{condition}</p>)}
+            <p className="canvas-warning__note">Drawing stays end-to-end encrypted. Images are compressed before they are shared.</p>
+            <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
+          </section>
+        </motion.div>}
+        {gamesComingSoonOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setGamesComingSoonOpen(false)}>
+          <motion.section ref={gamesComingSoonDialogRef} className="games-coming-soon-dialog" role="dialog" aria-modal="true" aria-labelledby="games-coming-soon-title" aria-describedby="games-coming-soon-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="games-coming-soon-dialog__icon"><Gamepad2 size={20} aria-hidden="true" /></div>
+            <h2 id="games-coming-soon-title">Games are coming soon</h2>
+            <p id="games-coming-soon-description">We’re working on shared games for your Beam. Check back soon.</p>
+            <div className="games-coming-soon-dialog__actions"><button className="primary small" type="button" onClick={() => setGamesComingSoonOpen(false)}>Got it</button></div>
+          </motion.section>
+        </motion.div>}
+      </AnimatePresence>
 
       <AnimatePresence>
         {pendingDangerousFile && (
@@ -629,6 +801,26 @@ export function ConnectedPage({
                   setPendingDangerousFile(null)
                 }}>Accept anyway</button>
               </div>
+            </motion.section>
+          </motion.div>
+        )}
+        {pendingDataFiles && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setPendingDataFiles(null)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-send-title" aria-describedby="data-saver-send-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><FileText size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-send-title">Send files using data?</h2>
+              <p id="data-saver-send-description">These {pendingDataFiles.length === 1 ? 'file is' : 'files are'} {formatBytes(pendingDataFiles.reduce((total, file) => total + file.size, 0))}. Data saver will not create previews, but sending still uses your connection data.</p>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setPendingDataFiles(null)}>Cancel</button><button className="primary small" type="button" onClick={() => { pendingDataFiles.forEach(beam.offerFile); setPendingDataFiles(null) }}>Send files</button></div>
+            </motion.section>
+          </motion.div>
+        )}
+        {pendingDataReceive && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: 8 }} onMouseDown={() => setPendingDataReceive(null)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-receive-title" aria-describedby="data-saver-receive-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><Download size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-receive-title">Receive this file using data?</h2>
+              <p id="data-saver-receive-description"><strong>{pendingDataReceive.name}</strong> is {formatBytes(pendingDataReceive.size)}. Data saver will not create a preview, but receiving still uses your connection data.</p>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setPendingDataReceive(null)}>Cancel</button><button className="primary small" type="button" onClick={() => { const transfer = pendingDataReceive; setPendingDataReceive(null); confirmFileReceive(transfer) }}>Receive file</button></div>
             </motion.section>
           </motion.div>
         )}
@@ -710,7 +902,22 @@ export function ConnectedPage({
               ) : (
                 <p className="settings-dialog__note">Only the person who started this Beam can change its password or joining mode.</p>
               )}
+              <div className="settings-dialog__section settings-dialog__toggle">
+              <div><strong>Data saver</strong><p>{dataSaver ? 'On for this browser only. Files, locations, and Canvas stay available with lower-data behavior.' : 'Reduce data use on this browser. This does not change anyone else’s Beam.'}</p></div>
+                <button className={`toggle ${dataSaver ? 'on' : ''}`} type="button" role="switch" aria-checked={dataSaver} onClick={() => dataSaver ? setDataSaverMode(false) : setDataSaverWarningOpen(true)} aria-label="Toggle data saver"><span /></button>
+              </div>
               <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); setMetricsOpen(true) }}><Activity size={17} /> Technical metrics</button>
+            </motion.section>
+          </motion.div>
+        )}
+        {dataSaverWarningOpen && (
+          <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDataSaverWarningOpen(false)}>
+            <motion.section className="data-saver-dialog" role="dialog" aria-modal="true" aria-labelledby="data-saver-title" aria-describedby="data-saver-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="data-saver-dialog__icon"><WifiOff size={20} aria-hidden="true" /></div>
+              <h2 id="data-saver-title">Turn on data saver?</h2>
+              <p id="data-saver-description">Your Beam experience will be noticeably worse. This setting affects only this browser, not anyone else in the Beam.</p>
+              <ul><li>Removes typing indicators.</li><li>Keeps files and locations available, without attachment or map previews.</li><li>Asks before file uploads and downloads because they can use significant data.</li><li>Keeps Canvas available with fewer live updates and stronger image compression.</li><li>Warns you before creating or joining a Canvas.</li></ul>
+              <div className="data-saver-dialog__actions"><button className="quiet-button" type="button" onClick={() => setDataSaverWarningOpen(false)}>Cancel</button><button className="primary small" type="button" onClick={() => { setDataSaverMode(true); setDataSaverWarningOpen(false) }}>Turn on data saver</button></div>
             </motion.section>
           </motion.div>
         )}
@@ -718,6 +925,15 @@ export function ConnectedPage({
 
     </motion.section>
   )
+}
+
+function TypingIndicator({ peers }: { peers: { id: string; name: string }[] }) {
+  const names = peers.map(peer => peer.name)
+  const label = names.length === 1 ? `${names[0]} is typing` : `${names.join(', ')} are typing`
+  return <div className="typing-indicator" role="status" aria-live="polite" aria-atomic="true" aria-label={label}>
+    <span>{label}</span>
+    <span className="typing-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
+  </div>
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -933,18 +1149,33 @@ function TransferCard({
 
 function FeedCard({
   item,
+  dataSaver,
+  onCanvasJoin,
 }: {
   item: FeedItem
+  dataSaver: boolean
+  onCanvasJoin?: () => void
 }) {
   const timestamp = formatMessageTime(item.createdAt)
 
   if (item.kind === 'system') {
     return (
-      <article className="system-event" title={timestamp} aria-label={`${item.value} ${timestamp}`}>
+      <article className={`system-event ${onCanvasJoin ? 'system-event--canvas' : ''}`} title={timestamp} aria-label={`${item.value} ${timestamp}`}>
         <span>{item.value}</span>
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin}><Paintbrush size={15} /> Join canvas</button>}
         <time dateTime={new Date(item.createdAt).toISOString()}>{timestamp}</time>
       </article>
     )
+  }
+
+  if (item.kind === 'canvas') {
+    return <div className={`message-stack ${item.received ? 'message-stack--received' : 'message-stack--sent'}`}>
+      {item.received && <span className="message-sender">{item.sender}</span>}
+      <article className={`feed-item feed-item--canvas ${item.received ? 'received-message' : 'sent-message'}`} data-time={timestamp} title={timestamp}>
+        <div><span className="feed-item--canvas__icon"><Paintbrush size={17} /></span><strong>{item.value}</strong><span>{item.received ? `${item.sender} started a canvas` : 'You started a canvas'}</span></div>
+        {onCanvasJoin && <button type="button" onClick={onCanvasJoin} aria-label={item.received ? 'Join canvas' : 'Open canvas'}><span className="canvas-invite__action-full">{item.received ? 'Join canvas' : 'Open canvas'}</span><span className="canvas-invite__action-compact" aria-hidden="true">{item.received ? 'Join' : 'Open'}</span></button>}
+      </article>
+    </div>
   }
 
   const location =
@@ -971,7 +1202,7 @@ function FeedCard({
               <span className="file-message__size">{formatBytes(item.size)}</span>
             )}
 
-            {location && (
+            {location && !dataSaver && (
               <LocationPreview
                 location={location}
                 href={item.value}

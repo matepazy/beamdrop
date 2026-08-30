@@ -8,10 +8,14 @@ export const CHUNK_SIZE = 48 * 1024
 export const totalChunksFor = (size: number) => Math.ceil(size / CHUNK_SIZE)
 type DeviceType = 'phone' | 'tablet' | 'computer'
 export type PeerHello = { v: 2; type: 'hello'; name: string; deviceType: DeviceType }
+export type TypingSignal = { v: 2; type: 'typing'; active: boolean }
 export type SharedText = { v: 2; type: 'item'; item: { id: string; kind: 'text' | 'link'; value: string; createdAt: number } }
 export type FileOffer = { v: 2; type: 'file-offer'; transferId: string; name: string; size: number; mimeType: string; totalChunks: number }
 export type FileReply = { v: 2; type: 'file-accept' | 'file-decline' | 'file-cancel' | 'file-complete'; transferId: string }
 export type KickNotice = { v: 2; type: 'kick-notice' }
+// A private, peer-specific capability signal. It is never shown in the room or
+// applied to another participant's settings.
+export type DataSaver = { v: 2; type: 'data-saver'; enabled: boolean }
 export type SystemEvent = {
   v: 2
   type: 'system-event'
@@ -23,7 +27,7 @@ export type SystemEvent = {
   setting?: 'free-for-all'
   enabled?: boolean
 }
-export type BeamMessage = PeerHello | SharedText | FileOffer | FileReply | KickNotice | SystemEvent
+export type BeamMessage = PeerHello | TypingSignal | SharedText | FileOffer | FileReply | KickNotice | DataSaver | SystemEvent
 const string = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f]/.test(value)
 const id = (value: unknown) => typeof value === 'string' && string(value, 128) && /^[A-Za-z0-9_-]+$/.test(value)
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
@@ -36,7 +40,9 @@ export function parseMessage(input: unknown): BeamMessage | null {
   if (message.v !== PROTOCOL_VERSION || typeof message.type !== 'string') return null
   try { if (new TextEncoder().encode(JSON.stringify(message)).byteLength > MAX_CONTROL_BYTES) return null } catch { return null }
   if (message.type === 'hello' && string(message.name, 48) && ['phone', 'tablet', 'computer'].includes(String(message.deviceType))) return message as PeerHello
+  if (message.type === 'typing' && typeof message.active === 'boolean') return message as TypingSignal
   if (message.type === 'kick-notice') return message as KickNotice
+  if (message.type === 'data-saver' && typeof message.enabled === 'boolean') return message as DataSaver
   if (message.type === 'system-event' && id(message.id) && finite(message.createdAt) && (message.createdAt as number) > 0) {
     if (message.event === 'nickname-changed' && string(message.previousName, 48) && string(message.nextName, 48)) return message as SystemEvent
     if (message.event === 'setting-changed' && message.setting === 'free-for-all' && typeof message.enabled === 'boolean') return message as SystemEvent
