@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, Gamepad2, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
+import { Activity, Check, ChevronDown, Clipboard, Copy, Download, Eye, EyeOff, FileText, Gamepad2, LoaderCircle, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -261,6 +261,7 @@ export function ConnectedPage({
   }, [gamesComingSoonOpen])
 
   const [onlyPeer] = beam.peers
+  const keepingConversationOpen = beam.hasConnected && ['waiting', 'peer-found', 'connecting', 'disconnected'].includes(beam.state)
   const recipient = beam.peers.length === 1
     ? onlyPeer?.name ?? 'this Beam'
     : beam.peers.length > 1
@@ -386,7 +387,7 @@ export function ConnectedPage({
     )
   }
 
-  if (!connected) {
+  if (!connected && !keepingConversationOpen) {
     return (
       <WaitingPage
         secret={secret}
@@ -447,12 +448,13 @@ export function ConnectedPage({
       : composer
 
   const sendMessage = () => {
-    if (!shareValue.trim()) return
+    if (!connected || !shareValue.trim()) return
 
     beam.sendItem(
       shareValue,
       isUrl(shareValue) ? 'link' : 'text',
     )
+    beam.setTyping(false)
     clearComposer()
   }
 
@@ -630,12 +632,16 @@ export function ConnectedPage({
                 ))}
               </div>
             )}
+            {beam.typingPeers.length > 0 && <TypingIndicator peers={beam.typingPeers} />}
           </div>
         ) : (
-          <div className="conversation-empty">
-            <span>Private conversation</span>
-            <p>Messages and attachments shared here disappear when this Beam ends.</p>
-          </div>
+          <>
+            <div className="conversation-empty">
+              <span>Private conversation</span>
+              <p>Messages and attachments shared here disappear when this Beam ends.</p>
+            </div>
+            {beam.typingPeers.length > 0 && <TypingIndicator peers={beam.typingPeers} />}
+          </>
         )}
       </section>
 
@@ -653,7 +659,24 @@ export function ConnectedPage({
         }}
       />
 
-      <form className="chat-composer" onSubmit={(event) => {
+      {keepingConversationOpen ? (
+        <section className="reconnect-card" role="status" aria-live="polite" aria-atomic="true">
+          <div className="reconnect-card__heading">
+            <LoaderCircle size={17} aria-hidden="true" />
+            <div>
+              <strong>Waiting for a connection</strong>
+              <span>Share this code with someone to join this Beam. Your conversation history is kept until someone joins your Beam.</span>
+            </div>
+          </div>
+          <div className="reconnect-card__code-row">
+            <code>{secret}</code>
+            <button type="button" onClick={() => void copy(secret)}>
+              {copied ? <Check size={17} aria-hidden="true" /> : <Copy size={17} aria-hidden="true" />}
+              {copied ? 'Copied' : 'Copy code'}
+            </button>
+          </div>
+        </section>
+      ) : <form className="chat-composer" onSubmit={(event) => {
         event.preventDefault()
         sendMessage()
       }}>
@@ -675,7 +698,7 @@ export function ConnectedPage({
         ) : (
           <div className="chat-composer__text-row">
             <div className="attachment-actions" ref={attachmentActionsRef}>
-              <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
+              <button className={`attachment-action ${attachmentsOpen ? 'is-open' : ''}`} type="button" disabled={!connected} onClick={() => setAttachmentsOpen((open) => !open)} aria-label={attachmentsOpen ? 'Close sharing options' : 'More sharing options'} aria-expanded={attachmentsOpen} aria-haspopup="menu"><Plus size={20} /></button>
               {attachmentsOpen && <div className="attachment-menu" role="menu">
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); fileInput.current?.click() }}><FileText size={17} /> File</button>
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
@@ -688,27 +711,30 @@ export function ConnectedPage({
               ref={composerInput}
               value={composer}
               maxLength={8_000}
+              disabled={!connected}
               onChange={(event) => {
                 setComposer(event.target.value)
+                beam.setTyping(Boolean(event.target.value.trim()))
                 resizeComposer(event.currentTarget)
               }}
+              onBlur={() => beam.setTyping(false)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   sendMessage()
                 }
               }}
-              placeholder={`Message ${recipient}`}
+              placeholder={connected ? `Message ${recipient}` : 'Waiting for a connection…'}
               aria-label="Message"
             />
-            <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /></button>
+            <button className="send-message" disabled={!connected || !shareValue.trim()} type="submit" aria-label="Send message"><Send size={18} /></button>
           </div>
         )}
 
         {composerMode === 'location' && <div className="chat-composer__bottom">
-          <button className="send-message" disabled={!shareValue.trim()} type="submit" aria-label="Send location"><Send size={18} /><span>Send</span></button>
+          <button className="send-message" disabled={!connected || !shareValue.trim()} type="submit" aria-label="Send location"><Send size={18} /><span>Send</span></button>
         </div>}
-      </form>
+      </form>}
 
       {shareStatus && (
         <p
@@ -899,6 +925,15 @@ export function ConnectedPage({
 
     </motion.section>
   )
+}
+
+function TypingIndicator({ peers }: { peers: { id: string; name: string }[] }) {
+  const names = peers.map(peer => peer.name)
+  const label = names.length === 1 ? `${names[0]} is typing` : `${names.join(', ')} are typing`
+  return <div className="typing-indicator" role="status" aria-live="polite" aria-atomic="true" aria-label={label}>
+    <span>{label}</span>
+    <span className="typing-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
+  </div>
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

@@ -39,7 +39,7 @@ type CanvasMessage =
   | { type: 'drawing-stop'; canvasId: string }
   | { type: 'image'; canvasId: string; image: CanvasImage }
   | { type: 'delete'; canvasId: string; id: string }
-const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', NOT_FOUND_TIMEOUT = 8_000
+const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', HANDSHAKE_TIMEOUT = 15_000, DISCOVERY_RETRY_TIMEOUT = 20_000
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const canvasMessageBytes = (message: CanvasMessage) => new TextEncoder().encode(JSON.stringify(message)).byteLength
 // Half-pixel precision is visually indistinguishable here, but keeps live drawing packets compact.
@@ -69,9 +69,11 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [canvas, setCanvas] = useState<CanvasSession | null>(null)
   const [canvasTraffic, setCanvasTraffic] = useState<CanvasTraffic>({ sent: 0, received: 0 })
   const [canvasPresence, setCanvasPresence] = useState<CanvasPresence[]>([])
+  const [typingPeers, setTypingPeers] = useState<Peer[]>([])
+  const [hasConnected, setHasConnected] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
-  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver)
+  const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver), freshBeamOnNextConnection = useRef(false), typingExpiry = useRef(new Map<string, number>()), typingActive = useRef(false), lastTypingSignalAt = useRef(0)
   useEffect(() => { nameRef.current = displayName }, [displayName])
   useEffect(() => { dataSaverRef.current = dataSaver }, [dataSaver])
   const updateTransfer = useCallback((id: string, update: Partial<TransferRecord>) => setTransfers(current => current.map(item => item.id === id ? { ...item, ...update } : item)), [])
@@ -92,17 +94,41 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   useEffect(() => {
     if (!secret) { setState('idle'); return }
     let stopped = false; let room: RoomLike | null = null; let notFound: number | undefined; let recoveryTimer: number | undefined; let foundTransportPeer = false; let hadConnectedPeer = false
-    joined.current = isCreator; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([])
+    const joinRequestTimers = new Map<string, number>()
+    // A remaining guest becomes the host for the restarted Beam. Do not reset
+    // its admission capability while refreshing the signaling room.
+    joined.current = isCreator || joined.current; ownJoinToken.current = uid(); freeForAllRef.current = false; setFreeForAllState(false); setPendingPeers([])
     const syncPeers = () => setPeers([...sessions.current.values()].filter(session => session.status === 'connected').map(session => ({ id: session.peerId, name: session.displayName, deviceType: session.deviceType })))
     const rejectInvalid = (peerId: string) => { const count = (invalidPeers.current.get(peerId) ?? 0) + 1; invalidPeers.current.set(peerId, count); return count >= 8 }
     const isBlocked = (peerId: string) => (invalidPeers.current.get(peerId) ?? 0) >= 8
     const updateConnectionState = () => { if (!stopped) setState([...sessions.current.values()].some(session => session.status === 'connected') ? 'connected' : 'waiting') }
-    const recover = () => {
+    const restartRoom = () => {
       if (stopped || recoveryTimer) return
-      setState('disconnected')
+      setState('waiting')
       recoveryTimer = window.setTimeout(() => {
         if (!stopped) setConnectionAttempt(current => current + 1)
       }, 1_500)
+    }
+    const clearPreviousBeam = () => {
+      // The person who stayed can review the previous Beam while waiting. Once
+      // someone new joins, make the restarted Beam a clean, private session.
+      setFeed(current => {
+        for (const item of current) if (item.objectUrl) URL.revokeObjectURL(item.objectUrl)
+        return []
+      })
+      setTransfers([])
+      incoming.current.clear()
+      for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort()
+      outgoing.current.clear()
+      for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry)
+      drawingExpiry.current.clear()
+      for (const expiry of typingExpiry.current.values()) window.clearTimeout(expiry)
+      typingExpiry.current.clear()
+      setTypingPeers([])
+      canvasRef.current = null
+      setCanvas(null)
+      setCanvasTraffic({ sent: 0, received: 0 })
+      setCanvasPresence([])
     }
     const peerName = (peerId: string) => sessions.current.get(peerId)?.displayName ?? 'Connected device'
     const updateOutgoingRecord = (transfer: OutgoingTransfer, metrics?: { speed: number; averageSpeed: number; peakSpeed: number; elapsedMs: number }) => {
@@ -116,14 +142,21 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         const [rtcConfig, material] = await Promise.all([getRtcConfig(), deriveRoomMaterial(secret)])
         if (stopped) return
         room = joinRoom({ appId: 'beamdrop-v2', rtcConfig, password: material.signalingKey }, material.roomId, {
-          handshakeTimeoutMs: 5_000,
+          // Handshakes run over the newly opened data channel. Allow slower
+          // browsers and background tabs enough time to complete it before a
+          // discovery retry tears down the pending connection.
+          handshakeTimeoutMs: HANDSHAKE_TIMEOUT,
           onPeerHandshake: async (_peerId, handshakeSend, handshakeReceive, isInitiator) => {
             await authenticatePeer({ roomId: material.roomId, authenticationKey: material.authenticationKey, send: handshakeSend, receive: handshakeReceive, isInitiator })
           },
           onJoinError: ({ error }) => {
-            if (stopped || !/handshake|peer authentication|incompatible peer protocol|official release/i.test(error)) return
-            // Authentication errors intentionally remain neutral: they do not prove hostile intent.
-            setState('verification-failed')
+            if (stopped) return
+            // A pending connection can close during ICE negotiation or while a
+            // tab is backgrounded. That is recoverable, not proof that the
+            // other device failed authentication.
+            if (/peer authentication failed|invalid peer authentication message|incompatible peer protocol|official release verification required|incorrect password/i.test(error)) {
+              setState('verification-failed')
+            }
           },
         }) as unknown as RoomLike; roomRef.current = room
         const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS), canvasAction = room.makeAction<CanvasMessage>(CANVAS)
@@ -210,6 +243,17 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           void control.send({ v: 2, type: 'hello', name: nameRef.current, deviceType: inferDeviceType() }, { target: peerId })
           if (dataSaverRef.current) void control.send({ v: 2, type: 'data-saver', enabled: true }, { target: peerId })
         }
+        const stopJoinRequest = (peerId: string) => {
+          const timer = joinRequestTimers.get(peerId)
+          if (timer) window.clearTimeout(timer)
+          joinRequestTimers.delete(peerId)
+        }
+        const requestAdmission = (peerId: string) => {
+          if (stopped || joined.current || !sessions.current.has(peerId)) return
+          void access.send({ type: 'join-request', name: nameRef.current, deviceType: inferDeviceType(), token: ownJoinToken.current }, { target: peerId })
+          stopJoinRequest(peerId)
+          joinRequestTimers.set(peerId, window.setTimeout(() => requestAdmission(peerId), 1_500))
+        }
         sendHelloRef.current = () => { for (const session of sessions.current.values()) if (session.status === 'connected') hello(session.peerId) }
         const addPendingPeer = (peer: Peer) => setPendingPeers(current => current.some(existing => existing.id === peer.id) ? current : [...current, peer])
         const admit = (peerId: string) => {
@@ -226,21 +270,32 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           foundTransportPeer = true
           sessions.current.set(peerId, { peerId, displayName: 'Connected device', role: 'member', status: 'pending', deviceType: 'computer' })
           setState(current => current === 'waiting' ? 'peer-found' : current)
-          if (!joined.current) void access.send({ type: 'join-request', name: nameRef.current, deviceType: inferDeviceType(), token: ownJoinToken.current }, { target: peerId })
+          if (!joined.current) requestAdmission(peerId)
         }
-        room.onPeerLeave = peerId => { const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) recover(); else updateConnectionState() }
+        room.onPeerLeave = peerId => { stopJoinRequest(peerId); const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); const typingTimer = typingExpiry.current.get(peerId); if (typingTimer) window.clearTimeout(typingTimer); typingExpiry.current.delete(peerId); setTypingPeers(current => current.filter(peer => peer.id !== peerId)); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) {
+          // Keep this room's discovery listener alive. Recreating it here
+          // races a WaitingScreen user trying to rejoin the still-visible
+          // ConnectedPage, leaving each side on a different attempt.
+          freshBeamOnNextConnection.current = true
+          updateConnectionState()
+        } else updateConnectionState() }
         access.onMessage = (message, { peerId }) => {
           if (stopped || isBlocked(peerId) || !message || typeof message !== 'object') { rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId)
           if (!session || session.status === 'kicked') return
           if (message.type === 'join-request') {
-            if (joined.current || isCreator) {
-              const valid = typeof message.name === 'string' && message.name.length <= 48 && ['phone', 'tablet', 'computer'].includes(message.deviceType) && typeof message.token === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(message.token)
-              if (!valid) return
-              session.displayName = message.name
-              session.deviceType = message.deviceType
-              joinTokens.current.set(peerId, message.token)
-              const firstGuest = isCreator && ![...sessions.current.values()].some(candidate => candidate.peerId !== peerId && candidate.status === 'connected')
+            const valid = typeof message.name === 'string' && message.name.length <= 48 && ['phone', 'tablet', 'computer'].includes(message.deviceType) && typeof message.token === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(message.token)
+            if (!valid) return
+            session.displayName = message.name
+            session.deviceType = message.deviceType
+            joinTokens.current.set(peerId, message.token)
+            const firstGuest = ![...sessions.current.values()].some(candidate => candidate.peerId !== peerId && candidate.status === 'connected')
+
+            // There is no room directory or durable host. When two browsers
+            // independently search for the same code, both start as guests;
+            // let the first pair bootstrap the Beam. Once a participant is
+            // connected, the normal approval policy applies again.
+            if (joined.current || isCreator || firstGuest) {
               if (firstGuest || freeForAllRef.current) admit(peerId)
               else addPendingPeer({ id: peerId, name: message.name, deviceType: message.deviceType })
             }
@@ -249,6 +304,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           if (message.type !== 'member-approved' || typeof message.peerId !== 'string' || typeof message.token !== 'string') return
           if (!joined.current && message.token === ownJoinToken.current) {
             joined.current = true
+            for (const peerId of joinRequestTimers.keys()) stopJoinRequest(peerId)
             setPasswordRequired(false)
             for (const candidate of sessions.current.values()) if (candidate.status !== 'kicked' && candidate.status !== 'disconnected') { candidate.status = 'authenticated'; hello(candidate.peerId) }
             return
@@ -263,8 +319,9 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           const message = parseMessage(raw); if (!message || stopped || isBlocked(peerId)) { if (!message) rejectInvalid(peerId); return }
           const session = sessions.current.get(peerId); if (!session || !['authenticated', 'connected'].includes(session.status)) return
           if (message.type === 'data-saver') return
+          if (message.type === 'typing') { const previousExpiry = typingExpiry.current.get(peerId); if (previousExpiry) window.clearTimeout(previousExpiry); if (!message.active) { typingExpiry.current.delete(peerId); setTypingPeers(current => current.filter(peer => peer.id !== peerId)); return }; setTypingPeers(current => current.some(peer => peer.id === peerId) ? current : [...current, { id: peerId, name: peerName(peerId), deviceType: session.deviceType }]); typingExpiry.current.set(peerId, window.setTimeout(() => { typingExpiry.current.delete(peerId); setTypingPeers(current => current.filter(peer => peer.id !== peerId)) }, 2_500)); return }
           if (message.type === 'kick-notice') { if (!isCreator) { setState('kicked'); void room?.leave() }; return }
-          if (message.type === 'hello') { const wasConnected = session.status === 'connected', previousName = session.displayName; session.displayName = message.name; session.deviceType = message.deviceType; session.status = 'connected'; hadConnectedPeer = true; if (!wasConnected) { addSystemEntry(uid(), `${message.name} joined the Beam.`); if (canvasRef.current) void canvasSendRef.current?.({ type: 'sync', canvas: canvasRef.current }, peerId) } else if (previousName !== message.name) addSystemEntry(uid(), `${previousName} changed their nickname to ${message.name}.`); if (recoveryTimer) { clearTimeout(recoveryTimer); recoveryTimer = undefined }; syncPeers(); updateConnectionState(); return }
+          if (message.type === 'hello') { const wasConnected = session.status === 'connected', previousName = session.displayName; session.displayName = message.name; session.deviceType = message.deviceType; session.status = 'connected'; hadConnectedPeer = true; setHasConnected(true); if (!wasConnected) { if (freshBeamOnNextConnection.current) { freshBeamOnNextConnection.current = false; clearPreviousBeam() }; addSystemEntry(uid(), `${message.name} joined the Beam.`); if (canvasRef.current) void canvasSendRef.current?.({ type: 'sync', canvas: canvasRef.current }, peerId) } else if (previousName !== message.name) addSystemEntry(uid(), `${previousName} changed their nickname to ${message.name}.`); if (recoveryTimer) { clearTimeout(recoveryTimer); recoveryTimer = undefined }; syncPeers(); updateConnectionState(); return }
           if (session.status !== 'connected') return
           if (message.type === 'system-event') { if (message.event === 'nickname-changed') { session.displayName = message.nextName!; syncPeers(); addSystemEntry(`${peerId}:${message.id}`, `${message.previousName} changed their nickname to ${message.nextName}.`, message.createdAt) } else if (message.enabled !== undefined) addSystemEntry(`${peerId}:${message.id}`, `${peerName(peerId)} changed the setting: Free for all ${message.enabled ? 'enabled' : 'disabled'}.`, message.createdAt); return }
           if (message.type === 'item') { setFeed(current => [{ id: `${peerId}:${message.item.id}`, kind: message.item.kind, value: message.item.value, url: message.item.kind === 'link' ? message.item.value : undefined, sender: peerName(peerId), createdAt: message.item.createdAt, received: true }, ...current]); return }
@@ -275,13 +332,14 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           if (message.type === 'file-complete') { const received = incoming.current.get(key); if (received?.accepted && received.bytes === received.offer.size) return; const transfer = outgoing.current.get(message.transferId), recipient = transfer?.recipients.get(peerId); if (transfer && recipient && recipient.status === 'transferring' && recipient.bytesSent === transfer.file.size) { recipient.status = 'completed'; recipient.abortController = undefined; updateOutgoingRecord(transfer) } }
         }
         chunks.onMessage = (raw, { peerId }) => { const frame = decodeChunk(raw); if (!frame || isBlocked(peerId)) { rejectInvalid(peerId); return }; const transfer = incoming.current.get(incomingKey(peerId, frame.transferId)); if (!transfer || !transfer.accepted || !transfer.chunks || frame.index !== transfer.chunks.length || frame.index >= transfer.offer.totalChunks) { rejectInvalid(peerId); return }; const expected = Math.min(CHUNK_SIZE, transfer.offer.size - frame.index * CHUNK_SIZE); if (frame.payload.byteLength !== expected || transfer.bytes + expected > transfer.offer.size) { rejectInvalid(peerId); return }; transfer.chunks.push(frame.payload); transfer.bytes += expected; const measurement = (transfer.meter ??= createTransferMeter())(transfer.bytes), now = performance.now(); if (shouldReportProgress(transfer.lastReportedAt ?? 0, now) || transfer.bytes === transfer.offer.size) { transfer.lastReportedAt = now; updateTransfer(transfer.recordId, { status: 'active', progress: transfer.offer.size ? transfer.bytes / transfer.offer.size : 1, speed: measurement.speed, averageSpeed: measurement.averageSpeed, peakSpeed: measurement.peakSpeed, elapsedMs: measurement.elapsedMs }) }; if (transfer.bytes !== transfer.offer.size) return; const objectUrl = URL.createObjectURL(new Blob(transfer.chunks, { type: transfer.offer.mimeType })); updateTransfer(transfer.recordId, { status: 'complete', progress: 1 }); setFeed(current => [{ id: transfer.recordId, kind: 'file', value: transfer.offer.name, size: transfer.offer.size, sender: peerName(peerId), createdAt: Date.now(), received: true, objectUrl }, ...current]); incoming.current.delete(incomingKey(peerId, frame.transferId)); void send({ v: 2, type: 'file-complete', transferId: frame.transferId }, peerId) }
-        if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) { void room?.leave(); setState('not-found') } }, NOT_FOUND_TIMEOUT)
+        if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) restartRoom() }, DISCOVERY_RETRY_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry); drawingExpiry.current.clear(); setCanvasPresence([]); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const timer of joinRequestTimers.values()) window.clearTimeout(timer); joinRequestTimers.clear(); for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry); drawingExpiry.current.clear(); for (const expiry of typingExpiry.current.values()) window.clearTimeout(expiry); typingExpiry.current.clear(); setTypingPeers([]); setCanvasPresence([]); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer, connectionAttempt, addSystemEntry])
 
   const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim().slice(0, 8_000), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
+  const setTyping = useCallback((active: boolean) => { if (dataSaverRef.current) return; const now = performance.now(); if (active && typingActive.current && now - lastTypingSignalAt.current < 1_500) return; if (!active && !typingActive.current) return; typingActive.current = active; lastTypingSignalAt.current = now; void send({ v: 2, type: 'typing', active }) }, [send])
   const offerFile = useCallback((file: File) => { if (!Number.isFinite(file.size) || file.size < 0 || file.size > MAX_FILE_SIZE) return; const recipients = [...sessions.current.values()].filter(session => session.status === 'connected'); if (!recipients.length) return; const id = uid(), offer: FileOffer = { v: 2, type: 'file-offer', transferId: id, name: file.name.slice(0, 255), size: file.size, mimeType: (file.type || 'application/octet-stream').slice(0, 127), totalChunks: totalChunksFor(file.size) }; const transfer: OutgoingTransfer = { id, file, recipients: new Map(recipients.map(session => [session.peerId, { peerId: session.peerId, status: 'offered', bytesSent: 0 }])) }; outgoing.current.set(id, transfer); void Promise.all(recipients.map(session => send(offer, session.peerId))); setTransfers(current => [{ id, transferId: id, name: offer.name, size: file.size, mimeType: offer.mimeType, sender: 'You', createdAt: Date.now(), direction: 'sending', status: 'offered', progress: 0, speed: 0, file }, ...current]) }, [send])
   const replyToOffer = useCallback((recordId: string, accept: boolean) => { const transfer = [...incoming.current.values()].find(value => value.recordId === recordId); if (!transfer || transfer.accepted) return; transfer.accepted = accept; if (accept) transfer.chunks = []; else incoming.current.delete(incomingKey(transfer.peerId, transfer.offer.transferId)); void send({ v: 2, type: accept ? 'file-accept' : 'file-decline', transferId: transfer.offer.transferId }, transfer.peerId); updateTransfer(recordId, { status: accept ? 'active' : 'declined' }) }, [send, updateTransfer])
   const cancelTransferForPeer = useCallback((transferId: string, peerId: string) => { const transfer = outgoing.current.get(transferId), recipient = transfer?.recipients.get(peerId); if (!transfer || !recipient || isRecipientTerminal(recipient.status)) return; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; void send({ v: 2, type: 'file-cancel', transferId }, peerId); updateTransfer(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { outgoing.current.delete(transfer.id); updateTransfer(transfer.id, { file: undefined }) } }, [send, updateTransfer])
@@ -312,7 +370,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const setCanvasDrawing = useCallback((point?: CanvasPoint) => { const current = canvasRef.current; if (!current) return; void canvasSendRef.current?.(point ? { type: 'drawing', canvasId: current.id, point: compactPoint(point, dataSaverRef.current) } : { type: 'drawing-stop', canvasId: current.id }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
   const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, canvasPresence, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, setCanvasDrawing, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeers, hasConnected, sendItem, setTyping, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, canvasPresence, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, setCanvasDrawing, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }
