@@ -5049,6 +5049,30 @@ a { -webkit-tap-highlight-color: transparent; }
 .canvas-board__tool-group output { min-width: 38px; color: #6b7280; font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
 .canvas-board__stage { background-color: #fcfcfb; background-image: radial-gradient(#d9dce5 .85px, transparent .85px); background-size: 20px 20px; }
 .canvas-board__stage--freehand { cursor: crosshair; }.canvas-board__stage--eraser { cursor: cell; }.canvas-board__stage--pan { cursor: grab; }.canvas-board__stage--pan:active { cursor: grabbing; }
+.canvas-board__drawing-label,
+.canvas-board__drawing-guide {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, .78);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(49, 46, 129, .92);
+  box-shadow: 0 3px 10px rgba(30, 27, 75, .25);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.canvas-board__drawing-label { transform: translate(10px, -50%); }
+.canvas-board__drawing-guide { transform: translate(-50%, -50%); }
+.canvas-board__drawing-guide svg { flex: 0 0 auto; }
+.canvas-board__coordinates { display: inline !important; flex: 0 0 auto; color: #4b5563 !important; font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none; }
 .canvas-board__hint { color: #6b7280; }.canvas-board__hint strong { color: #1f2937; }.canvas-board__foot { min-height: 38px; padding: 8px 16px; color: #6b7280; background: #fff; }.canvas-board__foot span:last-child { color: #9ca3af; }
 
 @media (max-width: 720px), (max-height: 560px) {
@@ -5184,3 +5208,6 @@ a { -webkit-tap-highlight-color: transparent; }
 }
 
 .canvas-board__custom-color:focus-within { outline: 3px solid rgba(79, 70, 229, .35); outline-offset: 2px; }
+
+/* Live collaboration overlays stay readable, but never become selectable canvas content. */
+.canvas-board__coordinates { color: #4b5563 !important; font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none; }

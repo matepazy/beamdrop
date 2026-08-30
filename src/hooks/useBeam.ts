@@ -16,6 +16,7 @@ export type CanvasStroke = { id: string; points: CanvasPoint[]; color: string; w
 export type CanvasImage = { id: string; dataUrl: string; x: number; y: number; width: number; height: number; author: string }
 export type CanvasSession = { id: string; name: string; starter: string; createdAt: number; strokes: CanvasStroke[]; images: CanvasImage[] }
 export type CanvasTraffic = { sent: number; received: number }
+export type CanvasPresence = { id: string; name: string; point: CanvasPoint }
 export type TransferRecord = { id: string; transferId: string; peerId?: string; name: string; size: number; mimeType: string; sender: string; createdAt: number; direction: 'sending' | 'receiving'; status: 'offered' | 'active' | 'complete' | 'declined' | 'cancelled' | 'interrupted'; progress: number; speed: number; averageSpeed?: number; peakSpeed?: number; elapsedMs?: number; file?: File }
 export type Peer = { id: string; name: string; deviceType: DeviceType }
 type PeerSession = { peerId: string; displayName: string; role: 'creator' | 'member'; status: 'pending' | 'authenticated' | 'connected' | 'disconnected' | 'kicked'; deviceType: DeviceType }
@@ -34,6 +35,8 @@ type CanvasMessage =
   | { type: 'stroke'; canvasId: string; stroke: CanvasStroke }
   | { type: 'stroke-start'; canvasId: string; stroke: Omit<CanvasStroke, 'points'>; point: CanvasPoint }
   | { type: 'stroke-points'; canvasId: string; id: string; points: number[] }
+  | { type: 'drawing'; canvasId: string; point: CanvasPoint }
+  | { type: 'drawing-stop'; canvasId: string }
   | { type: 'image'; canvasId: string; image: CanvasImage }
   | { type: 'delete'; canvasId: string; id: string }
 const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', NOT_FOUND_TIMEOUT = 8_000
@@ -65,6 +68,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [freeForAll, setFreeForAllState] = useState(false)
   const [canvas, setCanvas] = useState<CanvasSession | null>(null)
   const [canvasTraffic, setCanvasTraffic] = useState<CanvasTraffic>({ sent: 0, received: 0 })
+  const [canvasPresence, setCanvasPresence] = useState<CanvasPresence[]>([])
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
   const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver)
@@ -76,6 +80,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const retryConnection = useCallback(() => setConnectionAttempt(current => current + 1), [])
   const canvasSendRef = useRef<((message: CanvasMessage, peerId?: string) => Promise<void>) | null>(null)
   const canvasRef = useRef<CanvasSession | null>(null)
+  const drawingExpiry = useRef(new Map<string, number>())
   useEffect(() => { canvasRef.current = canvas }, [canvas])
 
   useEffect(() => {
@@ -178,6 +183,21 @@ export function useBeam(secret: string | null, _password: string, displayName: s
               if (!current || current.id !== message.canvasId || !points.length) return current
               return { ...current, strokes: current.strokes.map(stroke => stroke.id === message.id ? { ...stroke, points: [...stroke.points, ...points] } : stroke) }
             })
+          } else if (message.type === 'drawing' && canvasRef.current?.id === message.canvasId && message.point && Number.isFinite(message.point.x) && Number.isFinite(message.point.y)) {
+            setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
+            const previousExpiry = drawingExpiry.current.get(peerId)
+            if (previousExpiry) window.clearTimeout(previousExpiry)
+            setCanvasPresence(current => [...current.filter(presence => presence.id !== peerId), { id: peerId, name: peerName(peerId), point: compactPoint(message.point) }])
+            drawingExpiry.current.set(peerId, window.setTimeout(() => {
+              drawingExpiry.current.delete(peerId)
+              setCanvasPresence(current => current.filter(presence => presence.id !== peerId))
+            }, 1_500))
+          } else if (message.type === 'drawing-stop' && canvasRef.current?.id === message.canvasId) {
+            setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
+            const expiry = drawingExpiry.current.get(peerId)
+            if (expiry) window.clearTimeout(expiry)
+            drawingExpiry.current.delete(peerId)
+            setCanvasPresence(current => current.filter(presence => presence.id !== peerId))
           } else if (message.type === 'image' && canvasRef.current?.id === message.canvasId && message.image && typeof message.image.id === 'string' && typeof message.image.dataUrl === 'string' && message.image.dataUrl.length <= 1_400_000) {
             setCanvasTraffic(current => ({ ...current, received: current.received + canvasMessageBytes(message) }))
             setCanvas(current => current && current.id === message.canvasId && !current.images.some(image => image.id === message.image.id) ? { ...current, images: [...current.images, message.image] } : current)
@@ -258,7 +278,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) { void room?.leave(); setState('not-found') } }, NOT_FOUND_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry); drawingExpiry.current.clear(); setCanvasPresence([]); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer, connectionAttempt, addSystemEntry])
 
   const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim().slice(0, 8_000), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
@@ -289,9 +309,10 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const addCanvasStroke = useCallback((stroke: CanvasStroke, broadcast = true) => { const current = canvasRef.current; if (!current) return; const compacted = { ...stroke, points: stroke.points.map(point => compactPoint(point, dataSaverRef.current)) }; const index = current.strokes.findIndex(item => item.id === compacted.id); if (index < 0) setCanvas({ ...current, strokes: [...current.strokes, compacted] }); else if (current.strokes[index].points.length <= compacted.points.length) setCanvas({ ...current, strokes: current.strokes.map((item, candidate) => candidate === index ? compacted : item) }); if (broadcast) void canvasSendRef.current?.({ type: 'stroke', canvasId: current.id, stroke: compacted }) }, [])
   const startCanvasStroke = useCallback((stroke: CanvasStroke) => { const current = canvasRef.current; if (!current || !stroke.points.length || current.strokes.some(item => item.id === stroke.id)) return; const point = compactPoint(stroke.points[0], dataSaverRef.current), { points: _points, ...header } = stroke; setCanvas({ ...current, strokes: [...current.strokes, { ...stroke, points: [point] }] }); void canvasSendRef.current?.({ type: 'stroke-start', canvasId: current.id, stroke: header, point }) }, [])
   const appendCanvasStrokePoints = useCallback((id: string, points: CanvasPoint[]) => { const current = canvasRef.current; if (!current || !points.length) return; void canvasSendRef.current?.({ type: 'stroke-points', canvasId: current.id, id, points: compactPoints(points, dataSaverRef.current) }) }, [])
+  const setCanvasDrawing = useCallback((point?: CanvasPoint) => { const current = canvasRef.current; if (!current) return; void canvasSendRef.current?.(point ? { type: 'drawing', canvasId: current.id, point: compactPoint(point, dataSaverRef.current) } : { type: 'drawing-stop', canvasId: current.id }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
   const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, sendItem, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, canvasPresence, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, setCanvasDrawing, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }
