@@ -3176,6 +3176,29 @@ a:focus-visible {
 .data-saver-dialog li + li { margin-top: 5px; }
 .data-saver-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 
+.games-coming-soon-dialog {
+  width: min(420px, calc(100vw - 40px));
+  padding: 24px;
+  border-radius: var(--radius-ui);
+  background: #fff;
+  box-shadow: var(--shadow-dialog);
+}
+
+.games-coming-soon-dialog__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #eef0ff;
+  color: #455ef5;
+}
+
+.games-coming-soon-dialog h2 { margin: 16px 0 0; color: #2e2824; font-size: 20px; letter-spacing: -.035em; }
+.games-coming-soon-dialog p { margin: 9px 0 0; color: #686863; font-size: 14px; line-height: 1.5; }
+.games-coming-soon-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.games-coming-soon-dialog button:focus-visible { outline: 2px solid #455ef5; outline-offset: 3px; }
+
 .dangerous-file-dialog {
   width: min(420px, calc(100vw - 40px));
   padding: 24px;
@@ -4497,7 +4520,7 @@ a { -webkit-tap-highlight-color: transparent; }
 .session-shell .topbar { border-bottom: 1px solid rgba(21, 21, 21, .08); }
 .room { padding-bottom: 6px; }
 .participants, .dropzone, .chat-composer, .settings-dialog, .metrics-dialog, .beam-card, .qr-dialog { box-shadow: var(--shadow-soft); }
-.beam-card, .settings-dialog, .metrics-dialog, .qr-dialog, .dangerous-file-dialog { border-radius: calc(var(--radius-ui) + 8px); }
+.beam-card, .settings-dialog, .metrics-dialog, .qr-dialog, .dangerous-file-dialog, .games-coming-soon-dialog { border-radius: calc(var(--radius-ui) + 8px); }
 .participants { border-color: rgba(21, 21, 21, .1); }
 .dropzone {
   border-style: solid; border-color: rgba(69, 94, 245, .22); background: rgba(255,255,255,.42);
@@ -4510,7 +4533,7 @@ a { -webkit-tap-highlight-color: transparent; }
 .attachment-menu { border-color: rgba(21,21,21,.1); box-shadow: var(--shadow-raised); }
 .conversation .feed-item, .conversation .transfer-card { box-shadow: 0 1px 1px rgba(21,21,21,.04); }
 .dialog-backdrop { background: rgba(17, 17, 16, .48); backdrop-filter: blur(6px); }
-.qr-dialog, .settings-dialog, .metrics-dialog, .dangerous-file-dialog { border: 1px solid rgba(255,255,255,.72); box-shadow: 0 24px 64px rgba(15, 23, 42, .24); }
+.qr-dialog, .settings-dialog, .metrics-dialog, .dangerous-file-dialog, .games-coming-soon-dialog { border: 1px solid rgba(255,255,255,.72); box-shadow: 0 24px 64px rgba(15, 23, 42, .24); }
 
 @media (max-width: 760px) {
   .floating-nav { right: 16px; left: 16px; }
@@ -5045,13 +5068,15 @@ a { -webkit-tap-highlight-color: transparent; }
 
 .settings-dialog,
 .metrics-dialog,
-.dangerous-file-dialog {
+.dangerous-file-dialog,
+.games-coming-soon-dialog {
   border-radius: var(--radius-connected-xl);
   box-shadow: var(--shadow-connected-menu);
 }
 
 .settings-dialog__password input,
 .dangerous-file-dialog__icon,
+.games-coming-soon-dialog__icon,
 .metrics-dialog__head > button {
   border-radius: var(--radius-connected-md);
 }
@@ -5080,10 +5105,10 @@ a { -webkit-tap-highlight-color: transparent; }
 }
 
 /* Landing entry card uses the same nested-surface geometry as the room:
-   32px outer radius = 24px control radius + 8px outer inset. */
+   36px outer radius = 24px control radius + 12px outer inset. */
 .hero-actions {
-  padding: 8px;
-  border-radius: 32px;
+  padding: 12px;
+  border-radius: 36px;
 }
 
 .hero-actions .create-button,

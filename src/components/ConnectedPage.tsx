@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
+import { Activity, ChevronDown, Clipboard, Download, Eye, EyeOff, FileText, Gamepad2, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -54,6 +54,7 @@ export function ConnectedPage({
   const [pendingDataReceive, setPendingDataReceive] = useState<TransferRecord | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
+  const [gamesComingSoonOpen, setGamesComingSoonOpen] = useState(false)
   const [compactCanvasViewport, setCompactCanvasViewport] = useState(false)
 
   const [composerMode, setComposerMode] = useState<
@@ -73,6 +74,8 @@ export function ConnectedPage({
   const conversationRef = useRef<HTMLElement>(null)
   const dangerousFileDialogRef = useRef<HTMLElement>(null)
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
+  const gamesComingSoonDialogRef = useRef<HTMLElement>(null)
+  const gamesComingSoonTriggerRef = useRef<HTMLElement | null>(null)
   const quickStartCanvasHandled = useRef(false)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
@@ -217,6 +220,46 @@ export function ConnectedPage({
     }
   }, [pendingDangerousFile])
 
+  useEffect(() => {
+    if (!gamesComingSoonOpen) return
+
+    const dialog = gamesComingSoonDialogRef.current
+    const previousFocus = gamesComingSoonTriggerRef.current
+    const focusable = () => dialog
+      ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      : []
+
+    requestAnimationFrame(() => focusable()[0]?.focus())
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setGamesComingSoonOpen(false)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const controls = focusable()
+      if (!controls.length) return
+      const first = controls[0]
+      const last = controls.at(-1)!
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [gamesComingSoonOpen])
+
   const [onlyPeer] = beam.peers
   const recipient = beam.peers.length === 1
     ? onlyPeer?.name ?? 'this Beam'
@@ -294,6 +337,14 @@ export function ConnectedPage({
   const addLocation = () => {
     setAttachmentsOpen(false)
     openComposer('location')
+  }
+
+  const openGamesComingSoon = () => {
+    gamesComingSoonTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    setAttachmentsOpen(false)
+    setGamesComingSoonOpen(true)
   }
 
   const useCurrentLocation = () => {
@@ -630,6 +681,7 @@ export function ConnectedPage({
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
+                <button type="button" role="menuitem" onClick={openGamesComingSoon}><Gamepad2 size={17} /> Games</button>
               </div>}
             </div>
             <textarea
@@ -680,6 +732,14 @@ export function ConnectedPage({
             <p className="canvas-warning__note">Drawing stays end-to-end encrypted. Images are compressed before they are shared.</p>
             <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
           </section>
+        </motion.div>}
+        {gamesComingSoonOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setGamesComingSoonOpen(false)}>
+          <motion.section ref={gamesComingSoonDialogRef} className="games-coming-soon-dialog" role="dialog" aria-modal="true" aria-labelledby="games-coming-soon-title" aria-describedby="games-coming-soon-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="games-coming-soon-dialog__icon"><Gamepad2 size={20} aria-hidden="true" /></div>
+            <h2 id="games-coming-soon-title">Games are coming soon</h2>
+            <p id="games-coming-soon-description">We’re working on shared games for your Beam. Check back soon.</p>
+            <div className="games-coming-soon-dialog__actions"><button className="primary small" type="button" onClick={() => setGamesComingSoonOpen(false)}>Got it</button></div>
+          </motion.section>
         </motion.div>}
       </AnimatePresence>
 
