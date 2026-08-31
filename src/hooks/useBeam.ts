@@ -5,7 +5,7 @@ import { authenticatePeer } from '../lib/peerAuth'
 import { inferDeviceType, type DeviceType } from '../lib/device'
 import { CHUNK_SIZE, MAX_ACTIVE_TRANSFERS, MAX_FILE_SIZE, decodeChunk, encodeChunk, parseMessage, totalChunksFor, type BeamMessage, type FileOffer } from '../lib/protocol'
 import { getRtcConfig } from '../lib/rtc'
-import { getRoomDiagnostics, type RtcDiagnostics } from '../lib/rtcDiagnostics'
+import { calculateMeasuredBandwidth, getRoomDiagnostics, type RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { areAllRecipientsTerminal, createTransferMeter, isRecipientTerminal, PREPARED_CHUNK_COUNT, shouldReportProgress, type OutgoingTransfer } from '../lib/transfer'
 
 export type ConnectionState = 'idle' | 'waiting' | 'peer-found' | 'connecting' | 'connected' | 'disconnected' | 'password-required' | 'not-found' | 'kicked' | 'verification-failed' | 'failed'
@@ -21,7 +21,9 @@ export type TransferRecord = { id: string; transferId: string; peerId?: string; 
 export type Peer = { id: string; name: string; deviceType: DeviceType }
 type PeerSession = { peerId: string; displayName: string; role: 'creator' | 'member'; status: 'pending' | 'authenticated' | 'connected' | 'disconnected' | 'kicked'; deviceType: DeviceType }
 type Sender<T> = (data: T, peerId?: string) => Promise<void>
-type RoomLike = { makeAction<T>(name: string): { send(data: T, options?: { target?: string }): Promise<void>; onMessage: ((data: T, context: { peerId: string }) => void) | null }; onPeerJoin: ((peerId: string) => void) | null; onPeerLeave: ((peerId: string) => void) | null; getPeers(): Record<string, RTCPeerConnection>; leave(): Promise<void> }
+type MessageAction<T> = { send(data: T, options?: { target?: string }): Promise<void>; onMessage: ((data: T, context: { peerId: string }) => void) | null }
+type RequestAction<T, R> = { request(data: T, options: { target: string; timeoutMs?: number }): Promise<R> }
+type RoomLike = { makeAction<T>(name: string): MessageAction<T>; makeAction<T, R>(name: string, config: { kind: 'request'; onRequest: (data: T, context: { peerId: string; signal: AbortSignal }) => R | Promise<R> }): RequestAction<T, R>; onPeerJoin: ((peerId: string) => void) | null; onPeerLeave: ((peerId: string) => void) | null; getPeers(): Record<string, RTCPeerConnection>; leave(): Promise<void> }
 type Incoming = { recordId: string; offer: FileOffer; chunks?: Uint8Array[]; bytes: number; peerId: string; accepted: boolean; meter?: ReturnType<typeof createTransferMeter>; lastReportedAt?: number }
 type AccessMessage =
   | { type: 'join-request'; name: string; deviceType: DeviceType; token: string }
@@ -39,7 +41,7 @@ type CanvasMessage =
   | { type: 'drawing-stop'; canvasId: string }
   | { type: 'image'; canvasId: string; image: CanvasImage }
   | { type: 'delete'; canvasId: string; id: string }
-const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', HANDSHAKE_TIMEOUT = 15_000, DISCOVERY_RETRY_TIMEOUT = 20_000
+const CONTROL = 'beam-control-v2', CHUNK = 'beam-chunk-v2', ACCESS = 'beam-access-v2', CANVAS = 'beam-canvas-v2', BANDWIDTH = 'beam-bandwidth-v2', HANDSHAKE_TIMEOUT = 15_000, DISCOVERY_RETRY_TIMEOUT = 20_000, BANDWIDTH_PROBE_BYTES = 128 * 1024, BANDWIDTH_PROBE_COOLDOWN = 15_000
 const uid = () => crypto.randomUUID?.().replaceAll('-', '_') ?? `${Date.now()}_${crypto.getRandomValues(new Uint32Array(1))[0]}`
 const canvasMessageBytes = (message: CanvasMessage) => new TextEncoder().encode(JSON.stringify(message)).byteLength
 // Half-pixel precision is visually indistinguishable here, but keeps live drawing packets compact.
@@ -72,7 +74,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const [typingPeers, setTypingPeers] = useState<Peer[]>([])
   const [hasConnected, setHasConnected] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
-  const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null)
+  const roomRef = useRef<RoomLike | null>(null), sendRef = useRef<Sender<BeamMessage> | null>(null), bandwidthProbeRef = useRef<((peerId: string) => Promise<number | null>) | null>(null), bandwidthSamples = useRef(new Map<string, { value: number; sampledAt: number }>())
   const incoming = useRef(new Map<string, Incoming>()), outgoing = useRef(new Map<string, OutgoingTransfer>()), sessions = useRef(new Map<string, PeerSession>()), nameRef = useRef(displayName), joinTokens = useRef(new Map<string, string>()), ownJoinToken = useRef(uid()), joined = useRef(isCreator), freeForAllRef = useRef(false), admitPeerRef = useRef<(peerId: string) => void>(() => {}), invalidPeers = useRef(new Map<string, number>()), sendHelloRef = useRef<() => void>(() => {}), dataSaverRef = useRef(dataSaver), freshBeamOnNextConnection = useRef(false), typingExpiry = useRef(new Map<string, number>()), typingActive = useRef(false), lastTypingSignalAt = useRef(0)
   useEffect(() => { nameRef.current = displayName }, [displayName])
   useEffect(() => { dataSaverRef.current = dataSaver }, [dataSaver])
@@ -159,7 +161,18 @@ export function useBeam(secret: string | null, _password: string, displayName: s
             }
           },
         }) as unknown as RoomLike; roomRef.current = room
-        const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS), canvasAction = room.makeAction<CanvasMessage>(CANVAS)
+        const control = room.makeAction<BeamMessage>(CONTROL), chunks = room.makeAction<Uint8Array>(CHUNK), access = room.makeAction<AccessMessage>(ACCESS), canvasAction = room.makeAction<CanvasMessage>(CANVAS), bandwidth = room.makeAction<Uint8Array, null>(BANDWIDTH, { kind: 'request', onRequest: payload => payload instanceof Uint8Array && payload.byteLength === BANDWIDTH_PROBE_BYTES ? null : Promise.reject(new Error('invalid bandwidth probe')) })
+        bandwidthProbeRef.current = async peerId => {
+          const cached = bandwidthSamples.current.get(peerId), now = performance.now()
+          if (cached && now - cached.sampledAt < BANDWIDTH_PROBE_COOLDOWN) return cached.value
+          const startedAt = performance.now()
+          try {
+            await bandwidth.request(new Uint8Array(BANDWIDTH_PROBE_BYTES), { target: peerId, timeoutMs: 4_000 })
+            const value = calculateMeasuredBandwidth(BANDWIDTH_PROBE_BYTES, performance.now() - startedAt)
+            if (value !== null) bandwidthSamples.current.set(peerId, { value, sampledAt: performance.now() })
+            return value
+          } catch { return null }
+        }
         sendRef.current = async (message, peerId) => { if (peerId) return control.send(message, { target: peerId }); await Promise.all([...sessions.current.values()].filter(session => session.status === 'connected').map(session => control.send(message, { target: session.peerId }))) }
         canvasSendRef.current = async (message, peerId) => {
           const bytes = canvasMessageBytes(message)
@@ -272,7 +285,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
           setState(current => current === 'waiting' ? 'peer-found' : current)
           if (!joined.current) requestAdmission(peerId)
         }
-        room.onPeerLeave = peerId => { stopJoinRequest(peerId); const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); const typingTimer = typingExpiry.current.get(peerId); if (typingTimer) window.clearTimeout(typingTimer); typingExpiry.current.delete(peerId); setTypingPeers(current => current.filter(peer => peer.id !== peerId)); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) {
+        room.onPeerLeave = peerId => { stopJoinRequest(peerId); bandwidthSamples.current.delete(peerId); const session = sessions.current.get(peerId); if (session?.status === 'connected') addSystemEntry(uid(), `${session.displayName} left the Beam.`); if (session) session.status = 'disconnected'; joinTokens.current.delete(peerId); invalidPeers.current.delete(peerId); const typingTimer = typingExpiry.current.get(peerId); if (typingTimer) window.clearTimeout(typingTimer); typingExpiry.current.delete(peerId); setTypingPeers(current => current.filter(peer => peer.id !== peerId)); setPendingPeers(current => current.filter(peer => peer.id !== peerId)); endOutgoingForPeer(peerId, 'failed'); for (const [key, transfer] of incoming.current) if (transfer.peerId === peerId) { incoming.current.delete(key); updateTransfer(transfer.recordId, { status: 'interrupted' }) }; syncPeers(); if (hadConnectedPeer && ![...sessions.current.values()].some(candidate => candidate.status === 'connected')) {
           // Keep this room's discovery listener alive. Recreating it here
           // races a WaitingScreen user trying to rejoin the still-visible
           // ConnectedPage, leaving each side on a different attempt.
@@ -335,7 +348,7 @@ export function useBeam(secret: string | null, _password: string, displayName: s
         if (!isCreator) notFound = window.setTimeout(() => { if (!stopped && !foundTransportPeer) restartRoom() }, DISCOVERY_RETRY_TIMEOUT)
       } catch { if (!stopped) setState('failed') }
     }; void start()
-    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const timer of joinRequestTimers.values()) window.clearTimeout(timer); joinRequestTimers.clear(); for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry); drawingExpiry.current.clear(); for (const expiry of typingExpiry.current.values()) window.clearTimeout(expiry); typingExpiry.current.clear(); setTypingPeers([]); setCanvasPresence([]); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; roomRef.current = null; void room?.leave() }
+    return () => { stopped = true; if (notFound) clearTimeout(notFound); if (recoveryTimer) clearTimeout(recoveryTimer); for (const timer of joinRequestTimers.values()) window.clearTimeout(timer); joinRequestTimers.clear(); for (const expiry of drawingExpiry.current.values()) window.clearTimeout(expiry); drawingExpiry.current.clear(); for (const expiry of typingExpiry.current.values()) window.clearTimeout(expiry); typingExpiry.current.clear(); setTypingPeers([]); setCanvasPresence([]); for (const transfer of outgoing.current.values()) for (const recipient of transfer.recipients.values()) recipient.abortController?.abort(); outgoing.current.clear(); incoming.current.clear(); sessions.current.clear(); joinTokens.current.clear(); invalidPeers.current.clear(); bandwidthSamples.current.clear(); admitPeerRef.current = () => {}; sendHelloRef.current = () => {}; sendRef.current = null; canvasSendRef.current = null; bandwidthProbeRef.current = null; roomRef.current = null; void room?.leave() }
   }, [secret, isCreator, send, updateTransfer, connectionAttempt, addSystemEntry])
 
   const sendItem = useCallback((value: string, kind: 'text' | 'link') => { const item = { id: uid(), kind, value: value.trim().slice(0, 8_000), createdAt: Date.now() } as const; if (!item.value) return; void send({ v: 2, type: 'item', item }); setFeed(current => [{ id: item.id, kind, value: item.value, sender: 'You', createdAt: item.createdAt }, ...current]) }, [send])
@@ -370,7 +383,17 @@ export function useBeam(secret: string | null, _password: string, displayName: s
   const setCanvasDrawing = useCallback((point?: CanvasPoint) => { const current = canvasRef.current; if (!current) return; void canvasSendRef.current?.(point ? { type: 'drawing', canvasId: current.id, point: compactPoint(point, dataSaverRef.current) } : { type: 'drawing-stop', canvasId: current.id }) }, [])
   const addCanvasImage = useCallback((image: CanvasImage) => { const current = canvasRef.current; if (!current || current.images.some(item => item.id === image.id)) return; setCanvas({ ...current, images: [...current.images, image] }); void canvasSendRef.current?.({ type: 'image', canvasId: current.id, image }) }, [])
   const deleteCanvasElement = useCallback((id: string) => { const current = canvasRef.current; if (!current) return; setCanvas({ ...current, strokes: current.strokes.filter(stroke => stroke.id !== id), images: current.images.filter(image => image.id !== id) }); void canvasSendRef.current?.({ type: 'delete', canvasId: current.id, id }) }, [])
-  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeers, hasConnected, sendItem, setTyping, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, canvasPresence, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, setCanvasDrawing, addCanvasImage, deleteCanvasElement, getDiagnostics: async (): Promise<RtcDiagnostics[]> => roomRef.current ? getRoomDiagnostics(roomRef.current.getPeers()) : [] }
+  const getDiagnostics = useCallback(async (measureBandwidth = false): Promise<RtcDiagnostics[]> => {
+    if (!roomRef.current) return []
+    const diagnostics = await getRoomDiagnostics(roomRef.current.getPeers())
+    if (!measureBandwidth) return diagnostics
+    return Promise.all(diagnostics.map(async diagnostic => {
+      const measured = await bandwidthProbeRef.current?.(diagnostic.peerId)
+      return measured === null || measured === undefined ? diagnostic : { ...diagnostic, availableBandwidth: measured }
+    }))
+  }, [])
+
+  return { state, passwordRequired, peers, pendingPeers, feed, transfers, typingPeers, hasConnected, sendItem, setTyping, offerFile, replyToOffer, cancelTransfer, cancelTransferForPeer, admitPeer, kickPeer, freeForAll, setFreeForAll, rename, retryConnection, canvas, canvasTraffic, canvasPresence, startCanvas, joinCanvas, renameCanvas, addCanvasStroke, startCanvasStroke, appendCanvasStrokePoints, setCanvasDrawing, addCanvasImage, deleteCanvasElement, getDiagnostics }
 }
 
 function endTransfersForKick(transfers: Map<string, OutgoingTransfer>, peerId: string, update: (id: string, change: Partial<TransferRecord>) => void) { for (const transfer of [...transfers.values()]) { const recipient = transfer.recipients.get(peerId); if (!recipient || isRecipientTerminal(recipient.status)) continue; recipient.abortController?.abort(); recipient.abortController = undefined; recipient.status = 'cancelled'; update(transfer.id, outgoingView(transfer)); if (areAllRecipientsTerminal(transfer)) { transfers.delete(transfer.id); update(transfer.id, { file: undefined }) } } }

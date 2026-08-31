@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { connectionHealth, type RtcDiagnostics } from './rtcDiagnostics'
+import { calculateAvailableBandwidth, calculateMeasuredBandwidth, connectionHealth, type RtcDiagnostics } from './rtcDiagnostics'
 
 const diagnostic = (
   change: Partial<RtcDiagnostics> = {},
@@ -11,7 +11,7 @@ const diagnostic = (
   localCandidateType: 'host',
   remoteCandidateType: 'srflx',
   currentRoundTripTimeMs: 42,
-  availableOutgoingBitrate: 1_000_000,
+  availableBandwidth: 1_000_000,
   bytesSent: 0,
   bytesReceived: 0,
   ...change,
@@ -37,5 +37,28 @@ describe('connectionHealth', () => {
       tone: 'problem',
       label: 'Unstable connection',
     })
+  })
+})
+
+describe('calculateAvailableBandwidth', () => {
+  it('uses the slower direction as the connection bandwidth', () => {
+    expect(calculateAvailableBandwidth(8_000_000, 3_000_000)).toBe(3_000_000)
+  })
+
+  it('falls back to the estimate a browser provides', () => {
+    expect(calculateAvailableBandwidth(8_000_000, null)).toBe(8_000_000)
+    expect(calculateAvailableBandwidth(null, 3_000_000)).toBe(3_000_000)
+    expect(calculateAvailableBandwidth(null, null)).toBeNull()
+  })
+})
+
+describe('calculateMeasuredBandwidth', () => {
+  it('converts a completed probe into a bitrate', () => {
+    expect(calculateMeasuredBandwidth(125_000, 200)).toBe(5_000_000)
+  })
+
+  it('rejects invalid probe measurements', () => {
+    expect(calculateMeasuredBandwidth(0, 200)).toBeNull()
+    expect(calculateMeasuredBandwidth(125_000, 0)).toBeNull()
   })
 })

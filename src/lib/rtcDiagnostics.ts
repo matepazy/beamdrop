@@ -5,7 +5,7 @@ export type RtcDiagnostics = {
   localCandidateType: string | null
   remoteCandidateType: string | null
   currentRoundTripTimeMs: number | null
-  availableOutgoingBitrate: number | null
+  availableBandwidth: number | null
   bytesSent: number | null
   bytesReceived: number | null
 }
@@ -26,12 +26,34 @@ type StatsWithType = RTCStats & {
   protocol?: string
   currentRoundTripTime?: number
   availableOutgoingBitrate?: number
+  availableIncomingBitrate?: number
   bytesSent?: number
   bytesReceived?: number
 }
 
 const numeric = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
+
+/**
+ * Estimates the usable link bandwidth by taking the limiting direction of the
+ * selected WebRTC path. Some browsers publish only the outbound estimate; in
+ * that case it remains the best available measurement for this peer-to-peer
+ * connection.
+ */
+export function calculateAvailableBandwidth(
+  outgoingBitrate: number | null,
+  incomingBitrate: number | null,
+) {
+  if (outgoingBitrate === null) return incomingBitrate
+  if (incomingBitrate === null) return outgoingBitrate
+  return Math.min(outgoingBitrate, incomingBitrate)
+}
+
+/** Converts a completed peer probe into bits per second. */
+export function calculateMeasuredBandwidth(bytes: number, elapsedMs: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0 || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return null
+  return bytes * 8_000 / elapsedMs
+}
 
 /** Returns route details without exposing candidate IP addresses. */
 export async function getRtcDiagnostics(
@@ -65,7 +87,10 @@ export async function getRtcDiagnostics(
     currentRoundTripTimeMs: numeric(pair?.currentRoundTripTime) === null
       ? null
       : numeric(pair?.currentRoundTripTime)! * 1_000,
-    availableOutgoingBitrate: numeric(pair?.availableOutgoingBitrate),
+    availableBandwidth: calculateAvailableBandwidth(
+      numeric(pair?.availableOutgoingBitrate),
+      numeric(pair?.availableIncomingBitrate),
+    ),
     bytesSent: numeric(pair?.bytesSent),
     bytesReceived: numeric(pair?.bytesReceived),
   }
