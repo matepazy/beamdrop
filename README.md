@@ -129,6 +129,8 @@ public/              # Beam logo and monogram assets
 ## Current limitations
 
 - Incoming files are buffered in browser memory before download, so practical file-size limits depend on the browser and device.
+- Beam can be installed as a PWA for a more app-like experience and an offline app shell. The service worker precaches only the static application assets; it does not cache Beam URLs, secrets, passwords, messages, file contents, or incoming chunks.
+- Background continuation is best-effort, not guaranteed. Browsers and operating systems can throttle, suspend, or terminate a background tab/PWA; a killed page cannot resume an in-memory transfer. Keep large transfers foregrounded and resend a file if Beam reports it as interrupted. This is particularly strict and variable on iOS.
 - The initial experience is optimized for a reliable two-device exchange.
 - Peer discovery and connection setup require internet access.
 - Some restrictive NAT and firewall configurations require a TURN provider.

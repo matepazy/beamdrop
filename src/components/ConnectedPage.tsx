@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Activity, ArrowDown, ArrowUp, Check, ChevronDown, Clipboard, Clock3, Copy, Download, Eye, EyeOff, FileText, Gamepad2, Gauge, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
-import { type ComponentType, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -8,6 +8,7 @@ import { formatBytes, hostnameFor, isUrl } from '../lib/format'
 import { isPotentiallyDangerousFile } from '../lib/dangerousFile'
 import { connectionHealth } from '../lib/rtcDiagnostics'
 import { useBeam, type FeedItem, type TransferRecord } from '../hooks/useBeam'
+import { useBeamLifecycle } from '../hooks/useBeamLifecycle'
 import type { RtcDiagnostics } from '../lib/rtcDiagnostics'
 import { WaitingPage } from './WaitingPage'
 import { CanvasBoard } from './CanvasBoard'
@@ -80,6 +81,19 @@ export function ConnectedPage({
   const gamesComingSoonTriggerRef = useRef<HTMLElement | null>(null)
   const quickStartCanvasHandled = useRef(false)
   const connected = beam.state === 'connected'
+  const refreshDiagnostics = useCallback(async (measureBandwidth = metricsOpen) => {
+    const next = await beam.getDiagnostics(measureBandwidth)
+    setDiagnostics(next)
+    setDiagnosticsUpdatedAt(Date.now())
+  }, [beam.getDiagnostics, metricsOpen])
+  const lifecycle = useBeamLifecycle({
+    connectionState: beam.state,
+    transfers: beam.transfers,
+    onReconcile: () => {
+      if (beam.state !== 'connected') beam.retryConnection()
+      void refreshDiagnostics(false)
+    },
+  })
   const health = connectionHealth(diagnostics)
   const canvasConditions = [
     compactCanvasViewport
@@ -161,7 +175,7 @@ export function ConnectedPage({
   }, [attachmentsOpen])
 
   useEffect(() => {
-    if (!metricsOpen && !connected) return
+    if (!lifecycle.isForeground || (!metricsOpen && !connected)) return
 
     let active = true
     const refresh = async () => {
@@ -180,7 +194,7 @@ export function ConnectedPage({
       active = false
       window.clearInterval(interval)
     }
-  }, [connected, metricsOpen])
+  }, [beam.getDiagnostics, connected, lifecycle.isForeground, metricsOpen])
 
   useEffect(() => {
     if (!pendingDangerousFile) return
@@ -624,6 +638,19 @@ export function ConnectedPage({
           <span className="end-button__label">End</span>
         </button>
       </div>
+
+      {(lifecycle.notice.status !== 'ready' || beam.transfers.some(transfer => transfer.status === 'active')) && (
+        <div className={`beam-lifecycle beam-lifecycle--${lifecycle.notice.status}`} role="status" aria-live="polite" aria-atomic="true">
+          {lifecycle.notice.status === 'reconnecting' && <LoaderCircle size={16} aria-hidden="true" />}
+          {lifecycle.notice.status === 'interrupted' && <WifiOff size={16} aria-hidden="true" />}
+          {lifecycle.notice.status === 'background' && <Activity size={16} aria-hidden="true" />}
+          {lifecycle.notice.status === 'offline' && <WifiOff size={16} aria-hidden="true" />}
+          <div>
+            <strong>{lifecycle.notice.status === 'ready' ? 'Background transfers are best-effort' : lifecycle.notice.label}</strong>
+            <span>{lifecycle.notice.status === 'ready' ? 'Large transfers should stay in the foreground. Device and browser lifecycle rules may pause or interrupt Beam.' : lifecycle.notice.detail}</span>
+          </div>
+        </div>
+      )}
 
       <details
         className="participants"

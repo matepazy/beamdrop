@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 
 import { defaultDisplayName } from './lib/device'
 import { ConnectedPage } from './components/ConnectedPage'
+import { InstallBeam } from './components/InstallBeam'
 import { LandingPage } from './components/LandingPage'
 import { Logo } from './components/Brand'
 
@@ -132,19 +133,22 @@ export function App() {
 
       <AnimatePresence mode="wait">
         {view.mode === 'home' ? (
-          <LandingPage
-            key="home"
-            onCreate={createBeam}
-            onCreateCanvas={createCanvasBeam}
-            onJoin={(secret) =>
-              go({
-                mode: 'waiting',
-                secret,
-                password: '',
-                isCreator: false,
-              })
-            }
-          />
+          <>
+            <LandingPage
+              key="home"
+              onCreate={createBeam}
+              onCreateCanvas={createCanvasBeam}
+              onJoin={(secret) =>
+                go({
+                  mode: 'waiting',
+                  secret,
+                  password: '',
+                  isCreator: false,
+                })
+              }
+            />
+            <InstallBeam />
+          </>
         ) : view.mode === 'page' ? (
           <InfoPage key={view.page} page={view.page} />
         ) : (

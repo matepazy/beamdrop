@@ -352,6 +352,19 @@ a:focus-visible {
   font-size: 14px;
 }
 
+.install-beam,
+.install-beam__ios { width: min(calc(100% - 32px), 560px); margin: 0 auto 24px; border: 1px solid rgba(23, 32, 51, .12); border-radius: 16px; background: rgba(255, 255, 255, .88); box-shadow: 0 10px 24px rgba(23, 32, 51, .08); }
+.install-beam { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; }
+.install-beam div { min-width: 0; }
+.install-beam strong, .install-beam span { display: block; }
+.install-beam strong { color: #172033; font-size: 14px; }
+.install-beam span, .install-beam__ios { color: #586174; font-size: 13px; line-height: 1.45; }
+.install-beam button { min-width: 92px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 12px; color: #fff; background: #172033; font: inherit; font-weight: 750; cursor: pointer; touch-action: manipulation; }
+.install-beam button:hover { background: #293852; }
+.install-beam button:focus-visible { outline: 3px solid rgba(24, 119, 242, .42); outline-offset: 3px; }
+.install-beam__ios { padding: 12px 14px; }
+@media (max-width: 480px) { .install-beam { align-items: flex-start; flex-direction: column; } .install-beam button { width: 100%; } }
+
 
 /* =========================================================
    Landing page
@@ -2429,6 +2442,13 @@ a:focus-visible {
 .participants-connection span { margin-top: 1px; opacity: .84; }
 .participants-connection--caution { background: #fff7e7; color: #815b14; }
 .participants-connection--problem { background: #fff0ef; color: #a13d34; }
+.beam-lifecycle { display: flex; align-items: flex-start; gap: 8px; margin: 0 12px 10px; padding: 10px; border: 1px solid rgba(23, 32, 51, .1); border-radius: 10px; color: #384255; background: #f2f5fa; font-size: 12px; line-height: 1.4; }
+.beam-lifecycle svg { flex: none; margin-top: 1px; }
+.beam-lifecycle strong, .beam-lifecycle span { display: block; }
+.beam-lifecycle strong { font-size: 12px; font-weight: 700; }
+.beam-lifecycle span { margin-top: 1px; }
+.beam-lifecycle--reconnecting { color: #745516; background: #fff7e7; border-color: #f0d89b; }
+.beam-lifecycle--interrupted, .beam-lifecycle--offline { color: #9d3d36; background: #fff0ef; border-color: #f1c5c0; }
 
 @media (max-width: 620px) {
   .metrics-button { width: 44px; min-width: 44px; min-height: 44px; border-radius: var(--radius-ui); }
