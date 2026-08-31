@@ -2400,10 +2400,16 @@ a:focus-visible {
 .metrics-dialog__privacy { gap: 7px; margin: 16px 0; color: #777773; font-size: 11px; }
 .metrics-peer, .metrics-transfers { padding: 16px 0; border-top: 1px solid rgba(21, 21, 21, .08); }
 .metrics-peer h3, .metrics-transfers h3 { margin: 0 0 11px; color: #4b4b46; font-size: 13px; font-weight: 600; }
-.metrics-peer dl, .transfer-metric dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 0; }
+.metrics-peer dl, .transfer-metric dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin: 0; }
 .metrics-peer dl > div, .transfer-metric dl > div { min-width: 0; }
-.metrics-peer dt, .transfer-metric dt { color: #777773; font-size: 11px; }
+.metric:has(.metric-help:hover), .metric:has(.metric-help:focus-visible) { position: relative; z-index: 10; }
+.metrics-peer dt, .transfer-metric dt { display: flex; align-items: center; gap: 5px; color: #777773; font-size: 11px; line-height: 1.2; }
+.metrics-peer dt > svg, .transfer-metric dt > svg { flex: none; color: #64645f; }
 .metrics-peer dd, .transfer-metric dd { margin: 2px 0 0; overflow-wrap: anywhere; color: #343430; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric-help { position: relative; z-index: 1; width: 18px; height: 18px; flex: none; display: inline-grid; place-items: center; padding: 0; border: 1px solid rgba(21, 21, 21, .22); border-radius: 50%; background: #fff; color: #64645f; font-size: 11px; font-weight: 700; line-height: 1; cursor: help; }
+.metric-help::after { position: absolute; z-index: 100; top: calc(100% + 7px); left: 50%; width: min(220px, calc(100vw - 72px)); padding: 9px 10px; border-radius: 9px; background: #2f2f2b; box-shadow: 0 8px 18px rgba(21, 21, 21, .18); color: #fff; content: attr(data-tooltip); font-size: 12px; font-weight: 400; line-height: 1.4; text-align: left; opacity: 0; pointer-events: none; transform: translate(-50%, -3px); transition: opacity var(--motion-fast, 160ms) var(--ease-out, ease), transform var(--motion-fast, 160ms) var(--ease-out, ease); visibility: hidden; }
+.metric-help:hover, .metric-help:focus-visible { border-color: #455ef5; color: #455ef5; outline: 0; }
+.metric-help:hover::after, .metric-help:focus-visible::after { opacity: 1; transform: translate(-50%, 0); visibility: visible; }
 .metrics-empty, .metrics-transfers > p { margin: 0; padding: 16px 0; border-top: 1px solid rgba(21, 21, 21, .08); color: #777773; font-size: 12px; }
 .transfer-metric { padding: 12px 0; border-top: 1px solid rgba(21, 21, 21, .06); }
 .transfer-metric > div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
@@ -2427,7 +2433,7 @@ a:focus-visible {
 @media (max-width: 620px) {
   .metrics-button { width: 44px; min-width: 44px; min-height: 44px; border-radius: var(--radius-ui); }
   .metrics-dialog { width: 100%; max-height: min(78dvh, 650px); padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); border-radius: var(--radius-ui); }
-  .metrics-peer dl, .transfer-metric dl { gap: 12px; }
+  .metrics-peer dl, .transfer-metric dl { gap: 14px 12px; }
 }
 
 /* Familiar message-tray controls and shareable location cards. */

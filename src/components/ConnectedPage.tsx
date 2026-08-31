@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Activity, Check, ChevronDown, Clipboard, Copy, Download, Eye, EyeOff, FileText, Gamepad2, LoaderCircle, LockKeyhole, LogOut, MapPin, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Activity, ArrowDown, ArrowUp, Check, ChevronDown, Clipboard, Clock3, Copy, Download, Eye, EyeOff, FileText, Gamepad2, Gauge, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Paintbrush, Plus, RefreshCw, Send, Settings, UserRound, UserRoundX, WifiOff, X } from 'lucide-react'
+import { type ComponentType, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -74,6 +74,8 @@ export function ConnectedPage({
   const conversationRef = useRef<HTMLElement>(null)
   const dangerousFileDialogRef = useRef<HTMLElement>(null)
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
+  const metricsDialogRef = useRef<HTMLElement>(null)
+  const metricsTriggerRef = useRef<HTMLElement | null>(null)
   const gamesComingSoonDialogRef = useRef<HTMLElement>(null)
   const gamesComingSoonTriggerRef = useRef<HTMLElement | null>(null)
   const quickStartCanvasHandled = useRef(false)
@@ -221,6 +223,46 @@ export function ConnectedPage({
   }, [pendingDangerousFile])
 
   useEffect(() => {
+    if (!metricsOpen) return
+
+    const dialog = metricsDialogRef.current
+    const previousFocus = metricsTriggerRef.current
+    const focusable = () => dialog
+      ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      : []
+
+    requestAnimationFrame(() => focusable()[0]?.focus())
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMetricsOpen(false)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const controls = focusable()
+      if (!controls.length) return
+      const first = controls[0]
+      const last = controls.at(-1)!
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [metricsOpen])
+
+  useEffect(() => {
     if (!gamesComingSoonOpen) return
 
     const dialog = gamesComingSoonDialogRef.current
@@ -274,6 +316,13 @@ export function ConnectedPage({
     setCopied(true)
 
     setTimeout(() => setCopied(false), 1600)
+  }
+
+  const openMetrics = () => {
+    metricsTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    setMetricsOpen(true)
   }
 
   const commitName = () => {
@@ -549,7 +598,7 @@ export function ConnectedPage({
           </label>
         </div>
 
-        <button className="metrics-button" type="button" onClick={() => setMetricsOpen(true)} aria-label="Open technical metrics" title="Technical metrics">
+        <button className="metrics-button" type="button" onClick={openMetrics} aria-label="Open technical metrics" title="Technical metrics">
           <Activity size={18} />
         </button>
 
@@ -826,12 +875,12 @@ export function ConnectedPage({
         )}
         {metricsOpen && (
           <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setMetricsOpen(false)}>
-            <motion.section className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
-              <div className="metrics-dialog__head"><div><Activity size={19} /><div><h2 id="beam-metrics-title">Technical metrics</h2></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close technical metrics"><X size={18} /></button></div>
-              <div className="metrics-dialog__privacy"><LockKeyhole size={15} /> Candidate addresses are never shown.</div>
+            <motion.section ref={metricsDialogRef} className="metrics-dialog" role="dialog" aria-modal="true" aria-labelledby="beam-metrics-title" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+              <div className="metrics-dialog__head"><div><Activity size={19} aria-hidden="true" /><div><h2 id="beam-metrics-title">Connection details</h2><p>A quick look at how this Beam is performing.</p></div></div><button type="button" onClick={() => setMetricsOpen(false)} aria-label="Close connection details"><X size={18} /></button></div>
+              <div className="metrics-dialog__privacy"><LockKeyhole size={15} aria-hidden="true" /> Private by design: network addresses are never shown.</div>
               <section className={`connection-health connection-health--${health.tone}`} aria-live="polite"><strong>{health.label}</strong><p>{health.guidance}</p></section>
-              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers.find(peer => peer.id === diagnostic.peerId)?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric label="Route" value={diagnostic.route === 'turn-relay' ? 'TURN relay' : titleCase(diagnostic.route)} /><Metric label="Transport" value={diagnostic.transport.toUpperCase()} /><Metric label="Round-trip time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} /><Metric label="Available uplink" value={formatBitrate(diagnostic.availableOutgoingBitrate)} /><Metric label="Bytes sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric label="Bytes received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /><Metric label="Local candidate" value={diagnostic.localCandidateType ?? 'Unavailable'} /><Metric label="Remote candidate" value={diagnostic.remoteCandidateType ?? 'Unavailable'} /></dl></section>)}</div> : <p className="metrics-empty">Connection data will appear once the browser publishes it.</p>}
-              <section className="metrics-transfers"><h3>Transfer telemetry</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No file transfers in this Beam yet.</p>}</section>
+              {diagnostics.length > 0 ? <div className="metrics-peers">{diagnostics.map((diagnostic, index) => <section className="metrics-peer" key={diagnostic.peerId}><h3>{beam.peers.find(peer => peer.id === diagnostic.peerId)?.name ?? `Connected peer ${index + 1}`}</h3><dl><Metric icon={Network} label="Connection path" value={diagnostic.route === 'turn-relay' ? 'Via relay' : titleCase(diagnostic.route)} help="Whether your connection reaches this person directly or goes through a secure relay." /><Metric icon={Network} label="Connection type" value={diagnostic.transport.toUpperCase()} help="The network protocol your browser selected for this connection." /><Metric icon={Gauge} label="Response time" value={formatMilliseconds(diagnostic.currentRoundTripTimeMs)} help="How long it takes for a small signal to travel to the other person and back. Lower is usually better." /><Metric icon={ArrowUp} label="Upload capacity" value={formatBitrate(diagnostic.availableOutgoingBitrate)} help="The estimated amount of data your connection can send each second. Higher can make file sharing smoother." /><Metric icon={ArrowUp} label="Data sent" value={formatBytesOrUnavailable(diagnostic.bytesSent)} /><Metric icon={ArrowDown} label="Data received" value={formatBytesOrUnavailable(diagnostic.bytesReceived)} /></dl></section>)}</div> : <p className="metrics-empty">Connection details will appear when your browser makes them available.</p>}
+              <section className="metrics-transfers"><h3>File transfers</h3>{beam.transfers.length ? <div>{beam.transfers.map((transfer) => <TransferMetric key={transfer.id} transfer={transfer} />)}</div> : <p>No files have been transferred in this Beam yet.</p>}</section>
               <p className="metrics-dialog__updated"><RefreshCw size={13} /> Updates every 2 seconds{diagnosticsUpdatedAt ? ` · checked ${new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(diagnosticsUpdatedAt)}` : ''}</p>
             </motion.section>
           </motion.div>
@@ -906,7 +955,7 @@ export function ConnectedPage({
               <div><strong>Data saver</strong><p>{dataSaver ? 'On for this browser only. Files, locations, and Canvas stay available with lower-data behavior.' : 'Reduce data use on this browser. This does not change anyone else’s Beam.'}</p></div>
                 <button className={`toggle ${dataSaver ? 'on' : ''}`} type="button" role="switch" aria-checked={dataSaver} onClick={() => dataSaver ? setDataSaverMode(false) : setDataSaverWarningOpen(true)} aria-label="Toggle data saver"><span /></button>
               </div>
-              <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); setMetricsOpen(true) }}><Activity size={17} /> Technical metrics</button>
+              <button className="settings-dialog__metrics" type="button" onClick={() => { setSettingsOpen(false); openMetrics() }}><Activity size={17} /> Connection details</button>
             </motion.section>
           </motion.div>
         )}
@@ -936,12 +985,26 @@ function TypingIndicator({ peers }: { peers: { id: string; name: string }[] }) {
   </div>
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div><dt>{label}</dt><dd>{value}</dd></div>
+function Metric({
+  icon: Icon,
+  label,
+  value,
+  help,
+}: {
+  icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>
+  label: string
+  value: string
+  help?: string
+}) {
+  return <div className="metric"><dt><Icon size={14} aria-hidden={true} /><span>{label}</span>{help && <MetricHelp label={label} text={help} />}</dt><dd>{value}</dd></div>
+}
+
+function MetricHelp({ label, text }: { label: string; text: string }) {
+  return <button className="metric-help" type="button" aria-label={`What does ${label} mean? ${text}`} data-tooltip={text}><span aria-hidden="true">?</span></button>
 }
 
 function TransferMetric({ transfer }: { transfer: TransferRecord }) {
-  return <article className="transfer-metric"><div><strong>{transfer.name}</strong><span>{transfer.direction === 'sending' ? 'Sending' : 'Receiving'} · {transfer.status}</span></div><dl><Metric label="Size" value={formatBytes(transfer.size)} /><Metric label="Progress" value={`${Math.round(transfer.progress * 100)}%`} /><Metric label="Current speed" value={`${formatBytes(transfer.speed)}/s`} /><Metric label="Average speed" value={transfer.averageSpeed === undefined ? '—' : `${formatBytes(transfer.averageSpeed)}/s`} /><Metric label="Peak speed" value={transfer.peakSpeed === undefined ? '—' : `${formatBytes(transfer.peakSpeed)}/s`} /><Metric label="Elapsed" value={transfer.elapsedMs === undefined ? '—' : formatMilliseconds(transfer.elapsedMs)} /></dl></article>
+  return <article className="transfer-metric"><div><strong>{transfer.name}</strong><span>{transfer.direction === 'sending' ? 'Sending' : 'Receiving'} · {transfer.status}</span></div><dl><Metric icon={FileText} label="File size" value={formatBytes(transfer.size)} /><Metric icon={Activity} label="Progress" value={`${Math.round(transfer.progress * 100)}%`} /><Metric icon={Gauge} label="Current speed" value={`${formatBytes(transfer.speed)}/s`} help="How fast this file is moving right now. The speed can rise and fall during a transfer." /><Metric icon={Clock3} label="Time taken" value={transfer.elapsedMs === undefined ? '—' : formatMilliseconds(transfer.elapsedMs)} help="How long this file transfer has been running." /></dl></article>
 }
 
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
