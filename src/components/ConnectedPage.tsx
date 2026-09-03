@@ -14,6 +14,46 @@ import { CanvasBoard } from './CanvasBoard'
 
 const PASSWORD_FEATURE_ENABLED = false
 
+const gameLauncherGames: {
+  id: string
+  title: string
+  genre: string
+  players: string
+  summary: string
+}[] = [
+  { id: 'dungeon-raid', title: 'Delvebound', genre: 'Asynchronous dungeon tactics', players: '2–4 players', summary: 'Build a party route and choose abilities, then regroup between batches of encounters to adapt your plan.' },
+  { id: 'heist-planner', title: 'The Quiet Job', genre: 'Co-op heist planning', players: '3–5 players', summary: 'Assign specialist roles, map routes, and pack gadgets together before each heist stage resolves.' },
+  { id: 'territory-control', title: 'Crownlines', genre: 'Simultaneous map control', players: '2–6 players', summary: 'Issue simultaneous orders, negotiate alliances, and spend shared resources to expand across the map.' },
+  { id: 'trivia-bluffing', title: 'Plausible', genre: 'Trivia and bluffing', players: '3–8 players', summary: 'Submit a believable answer, spot the most convincing fakes, and earn points for fooling the room.' },
+  { id: 'social-deduction', title: 'The Last Alibi', genre: 'Social deduction', players: '5–10 players', summary: 'Gather evidence, compare stories, and make the case before the group’s next periodic vote.' },
+  { id: 'creature-battler', title: 'Wildlink', genre: 'Creature-card duels', players: '2 players', summary: 'Draft a deck, take deliberate turns, and chain creature abilities into powerful combinations.' },
+  { id: 'city-builder', title: 'Common Ground', genre: 'Collaborative city building', players: '2–6 players', summary: 'Contribute resources and place districts in shared build rounds while responding to changing events.' },
+  { id: 'racing-manager', title: 'Apex Tactics', genre: 'Racing management', players: '2–8 players', summary: 'Set race strategy, pit decisions, and upgrades before each simulation checkpoint.' },
+  { id: 'art-relay', title: 'Telephone Ink', genre: 'Art and word relay', players: '3–8 players', summary: 'Draw, caption, reinterpret, and reveal the wildly unexpected chain your group created.' },
+  { id: 'escape-room', title: 'The Locked Annex', genre: 'Escape-room co-op', players: '2–6 players', summary: 'Pool clues, inspect inventory, and solve a shared sequence of puzzles at your own pace.' },
+  { id: 'prediction-market', title: 'Forecast Floor', genre: 'Prediction market', players: '3–8 players', summary: 'Forecast in-game outcomes and player choices, then trade on your predictions as each round resolves.' },
+]
+
+function GameArtwork({ gameId }: { gameId: string }) {
+  const art = (() => {
+    switch (gameId) {
+      case 'dungeon-raid': return <><rect width="160" height="112" fill="#12182a"/><path d="M12 100 53 23 82 60l27-45 39 85Z" fill="#283a67"/><path d="m70 93 19-58 15 13-20 53Z" fill="#f4be5f"/><path d="m88 36 14 12-30 48-13-12Z" fill="#e8e2d1"/><circle cx="132" cy="27" r="11" fill="#f6c862"/><path d="M24 31h23M24 39h33M25 47h19" stroke="#6b84be" strokeWidth="3" strokeLinecap="round"/></>
+      case 'heist-planner': return <><rect width="160" height="112" fill="#0d2631"/><path d="M0 16h160M0 48h160M0 80h160M31 0v112M77 0v112M122 0v112" stroke="#2f7581" strokeWidth="2"/><path d="M14 89c30-38 37-5 61-45 19-31 29-11 56-50" fill="none" stroke="#f06051" strokeWidth="5" strokeDasharray="8 5"/><rect x="93" y="53" width="42" height="31" rx="4" fill="#f0b14a"/><path d="M101 53v-7c0-12 25-12 25 0v7" fill="none" stroke="#f0b14a" strokeWidth="5"/><circle cx="34" cy="26" r="8" fill="#d7f1e9"/></>
+      case 'territory-control': return <><rect width="160" height="112" fill="#173938"/><path d="M0 22 36 7l29 17 36-15 24 18 35-6v91H0Z" fill="#b8bb73"/><path d="M11 70 44 55l31 15 32-27 42 15" fill="none" stroke="#3f6856" strokeWidth="5"/><path d="m60 47 10-17 10 17 14 4-10 12 2 17-16-8-16 8 2-17-10-12Z" fill="#f5d774"/><circle cx="24" cy="35" r="8" fill="#e86a50"/><circle cx="121" cy="79" r="8" fill="#5873c4"/></>
+      case 'trivia-bluffing': return <><rect width="160" height="112" fill="#4f2858"/><path d="M0 90 39 35l34 32 39-49 48 72v22H0Z" fill="#7c4c8d"/><circle cx="82" cy="50" r="31" fill="#f5cf63"/><path d="M73 43c4-14 25-9 24 4 0 12-13 12-13 21M84 78v1" fill="none" stroke="#54285e" strokeWidth="8" strokeLinecap="round"/><path d="m17 27 21 13M124 22l19 16" stroke="#f3a3c5" strokeWidth="5" strokeLinecap="round"/></>
+      case 'social-deduction': return <><rect width="160" height="112" fill="#302635"/><path d="M20 20h47v36H20zM92 14h48v31H92zM75 67h52v31H75z" fill="#efe3c8"/><path d="M35 34 111 29 100 79 56 40" fill="none" stroke="#d75958" strokeWidth="3"/><path d="M26 74c13-20 32-21 45 0" fill="#211b28"/><circle cx="49" cy="58" r="15" fill="#e8a65e"/><path d="M45 57h9M49 52v10" stroke="#302635" strokeWidth="3"/><path d="M130 61l14 9" stroke="#f0b256" strokeWidth="4"/></>
+      case 'creature-battler': return <><rect width="160" height="112" fill="#152d4a"/><path d="M19 97c10-54 31-73 61-73 36 0 54 27 61 73" fill="#4f9c9c"/><path d="M48 36 67 22l7 18 14-18 20 17-10 46H57Z" fill="#e98163"/><circle cx="66" cy="60" r="8" fill="#18253c"/><circle cx="94" cy="60" r="8" fill="#18253c"/><path d="M68 80q13 11 26 0" fill="none" stroke="#18253c" strokeWidth="5" strokeLinecap="round"/><path d="m129 25 7 13 15 3-11 11 3 15-14-7-13 7 2-15-11-11 15-3Z" fill="#f4cf65"/></>
+      case 'city-builder': return <><rect width="160" height="112" fill="#4f7a9f"/><path d="M0 84h160v28H0z" fill="#d9bd7d"/><path d="M18 84V42h26v42M48 84V26h31v58M84 84V49h20v35M109 84V35h32v49" fill="#f4e8c7"/><path d="M25 51h6m8 0h-6m-8 12h6m8 0h-6m17-25h8m5 0h-8m-5 14h8m5 0h-8m-5 14h8m5 0h-8m38-21h7m5 0h-7m-5 13h7m5 0h-7m19-25h9m5 0h-9m-5 15h9m5 0h-9m-5 15h9m5 0h-9" stroke="#4f7a9f" strokeWidth="4"/><path d="M7 92h146" stroke="#5a835f" strokeWidth="7"/></>
+      case 'racing-manager': return <><rect width="160" height="112" fill="#e7d9c4"/><path d="M20 99c39-2 22-56 66-59 38-3 21 47 58 38" fill="none" stroke="#202a36" strokeWidth="22" strokeLinecap="round"/><path d="M20 99c39-2 22-56 66-59 38-3 21 47 58 38" fill="none" stroke="#f3f1e6" strokeWidth="3" strokeDasharray="8 7"/><path d="M110 15h34v27h-34z" fill="#f25d4b"/><path d="M110 15h17v27h-17z" fill="#f5d76a"/><path d="M39 42h17l8 11-8 11H39l-8-11z" fill="#426bd1"/></>
+      case 'art-relay': return <><rect width="160" height="112" fill="#fff7e8"/><path d="m17 84 20-48 29 16-19 45Z" fill="#f4c75d"/><path d="m38 29 11-18 11 8-10 19Z" fill="#363c5a"/><path d="M79 22c31 3 28 30 49 30 15 0 18-12 18-22" fill="none" stroke="#dc5e75" strokeWidth="7" strokeLinecap="round"/><path d="M75 77c31-2 30-31 52-30 12 0 17 10 18 18" fill="none" stroke="#4a88b5" strokeWidth="6" strokeLinecap="round"/><path d="m95 70 16 21 10-25 15 22" fill="none" stroke="#64a86e" strokeWidth="5"/></>
+      case 'escape-room': return <><rect width="160" height="112" fill="#24303e"/><path d="M41 11h76v101H41z" fill="#975944"/><path d="M51 21h56v91H51z" fill="#683d35"/><circle cx="96" cy="66" r="5" fill="#f4c96c"/><path d="M20 97c22-16 20-42 20-64M140 97c-22-16-20-42-20-64" fill="none" stroke="#b7c6bb" strokeWidth="4"/><circle cx="28" cy="27" r="16" fill="#eef0df"/><path d="M28 19v17m-7-8h14" stroke="#5b6a68" strokeWidth="3"/><path d="M78 25c10-9 22-8 31 0" fill="none" stroke="#f0d1a6" strokeWidth="4"/></>
+      default: return <><rect width="160" height="112" fill="#123b48"/><path d="M0 77h160v35H0z" fill="#1d5963"/><path d="M15 81 44 56l27 13 30-37 43 46" fill="none" stroke="#f6c75e" strokeWidth="5"/><path d="M23 27h24v32H23zM59 42h24v17H59zM95 19h24v40H95z" fill="#dce6d3"/><path d="M0 93h160" stroke="#dce6d3" strokeWidth="2" strokeDasharray="7 6"/></>
+    }
+  })()
+
+  return <svg viewBox="0 0 160 112" preserveAspectRatio="xMidYMid slice" focusable="false">{art}</svg>
+}
+
 export function ConnectedPage({
   secret,
   password,
@@ -54,7 +94,8 @@ export function ConnectedPage({
   const [pendingDataReceive, setPendingDataReceive] = useState<TransferRecord | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasWarning, setCanvasWarning] = useState<'start' | 'join' | null>(null)
-  const [gamesComingSoonOpen, setGamesComingSoonOpen] = useState(false)
+  const [gamesOpen, setGamesOpen] = useState(false)
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [compactCanvasViewport, setCompactCanvasViewport] = useState(false)
 
   const [composerMode, setComposerMode] = useState<
@@ -76,8 +117,8 @@ export function ConnectedPage({
   const dangerousFileTriggerRef = useRef<HTMLElement | null>(null)
   const metricsDialogRef = useRef<HTMLElement>(null)
   const metricsTriggerRef = useRef<HTMLElement | null>(null)
-  const gamesComingSoonDialogRef = useRef<HTMLElement>(null)
-  const gamesComingSoonTriggerRef = useRef<HTMLElement | null>(null)
+  const gamesDialogRef = useRef<HTMLElement>(null)
+  const gamesTriggerRef = useRef<HTMLElement | null>(null)
   const quickStartCanvasHandled = useRef(false)
   const connected = beam.state === 'connected'
   const health = connectionHealth(diagnostics)
@@ -263,10 +304,10 @@ export function ConnectedPage({
   }, [metricsOpen])
 
   useEffect(() => {
-    if (!gamesComingSoonOpen) return
+    if (!gamesOpen) return
 
-    const dialog = gamesComingSoonDialogRef.current
-    const previousFocus = gamesComingSoonTriggerRef.current
+    const dialog = gamesDialogRef.current
+    const previousFocus = gamesTriggerRef.current
     const focusable = () => dialog
       ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled])')]
       : []
@@ -276,7 +317,7 @@ export function ConnectedPage({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        setGamesComingSoonOpen(false)
+        setGamesOpen(false)
         return
       }
 
@@ -300,7 +341,7 @@ export function ConnectedPage({
       document.removeEventListener('keydown', onKeyDown)
       if (previousFocus?.isConnected) previousFocus.focus()
     }
-  }, [gamesComingSoonOpen])
+  }, [gamesOpen])
 
   const [onlyPeer] = beam.peers
   const keepingConversationOpen = beam.hasConnected && ['waiting', 'peer-found', 'connecting', 'disconnected'].includes(beam.state)
@@ -389,12 +430,13 @@ export function ConnectedPage({
     openComposer('location')
   }
 
-  const openGamesComingSoon = () => {
-    gamesComingSoonTriggerRef.current = document.activeElement instanceof HTMLElement
+  const openGames = () => {
+    gamesTriggerRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null
     setAttachmentsOpen(false)
-    setGamesComingSoonOpen(true)
+    setSelectedGameId((current) => current ?? gameLauncherGames[0].id)
+    setGamesOpen(true)
   }
 
   const useCurrentLocation = () => {
@@ -753,7 +795,7 @@ export function ConnectedPage({
                 <button type="button" role="menuitem" onClick={addLocation}><MapPin size={17} /> Location</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); void addClipboard() }}><Clipboard size={17} /> Paste</button>
                 <button type="button" role="menuitem" onClick={() => { setAttachmentsOpen(false); openCanvas('start') }}><Paintbrush size={17} /> Canvas</button>
-                <button type="button" role="menuitem" onClick={openGamesComingSoon}><Gamepad2 size={17} /> Games</button>
+                <button type="button" role="menuitem" onClick={openGames}><Gamepad2 size={17} /> Games</button>
               </div>}
             </div>
             <textarea
@@ -808,12 +850,39 @@ export function ConnectedPage({
             <div><button type="button" className="quiet-button" onClick={() => setCanvasWarning(null)}>Cancel</button><button type="button" className="primary" onClick={confirmCanvas}>{canvasWarning === 'start' ? 'Start anyway' : 'Join anyway'}</button></div>
           </section>
         </motion.div>}
-        {gamesComingSoonOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setGamesComingSoonOpen(false)}>
-          <motion.section ref={gamesComingSoonDialogRef} className="games-coming-soon-dialog" role="dialog" aria-modal="true" aria-labelledby="games-coming-soon-title" aria-describedby="games-coming-soon-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
-            <div className="games-coming-soon-dialog__icon"><Gamepad2 size={20} aria-hidden="true" /></div>
-            <h2 id="games-coming-soon-title">Games are coming soon</h2>
-            <p id="games-coming-soon-description">We’re working on shared games for your Beam. Check back soon.</p>
-            <div className="games-coming-soon-dialog__actions"><button className="primary small" type="button" onClick={() => setGamesComingSoonOpen(false)}>Got it</button></div>
+        {gamesOpen && <motion.div className="dialog-backdrop" role="presentation" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setGamesOpen(false)}>
+          <motion.section ref={gamesDialogRef} className="games-launcher-dialog" role="dialog" aria-modal="true" aria-labelledby="games-launcher-title" aria-describedby="games-launcher-description" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} onMouseDown={(event) => event.stopPropagation()}>
+            <header className="games-launcher-dialog__head">
+              <div>
+                <h2 id="games-launcher-title">Pick a world. Bring the room.</h2>
+                <p id="games-launcher-description">Eleven turn-based game concepts for the people already in your Beam. Every game is still in development.</p>
+              </div>
+              <button type="button" className="games-launcher-dialog__close" onClick={() => setGamesOpen(false)} aria-label="Close game library"><X size={20} aria-hidden="true" /></button>
+            </header>
+            <div className="games-launcher-dialog__content">
+              <div className="games-launcher-grid" aria-label="Available game concepts">
+                {gameLauncherGames.map((game) => {
+                  const selected = selectedGameId === game.id
+                  return <button key={game.id} type="button" className={`games-launcher-card ${selected ? 'is-selected' : ''}`} aria-pressed={selected} onClick={() => setSelectedGameId(game.id)}>
+                    <span className="games-launcher-card__art" aria-hidden="true"><GameArtwork gameId={game.id} /></span>
+                    <span className="games-launcher-card__copy"><strong>{game.title}</strong><span>{game.genre}</span><em>{game.players}</em></span>
+                  </button>
+                })}
+              </div>
+              <aside className="games-launcher-detail" aria-live="polite">
+                {selectedGameId ? (() => {
+                  const game = gameLauncherGames.find((entry) => entry.id === selectedGameId)!
+                  return <>
+                    <span className="games-launcher-detail__mark" aria-hidden="true"><GameArtwork gameId={game.id} /></span>
+                    <p className="games-launcher-detail__genre">{game.genre}</p>
+                    <p className="games-launcher-detail__label">Recommended for {game.players}</p>
+                    <h3>{game.title}</h3>
+                    <p>{game.summary}</p>
+                    <p className="games-launcher-detail__status">In development <span aria-hidden="true">·</span> Not playable yet</p>
+                  </>
+                })() : <div className="games-launcher-detail__empty"><Gamepad2 size={24} aria-hidden="true" /><h3>Choose a cover</h3><p>Select any game to read its description and recommended group size.</p></div>}
+              </aside>
+            </div>
           </motion.section>
         </motion.div>}
       </AnimatePresence>
